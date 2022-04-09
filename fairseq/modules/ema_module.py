@@ -6,8 +6,8 @@ and setting the appropriate decay
 """
 
 import copy
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
 
 import torch
 
