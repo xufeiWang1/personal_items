@@ -273,6 +273,46 @@ def cal_gcmvn_stats(features_list):
     std = np.sqrt(np.maximum(var, 1e-8))
     return {"mean": mean.astype("float32"), "std": std.astype("float32")}
 
+def compute_cmvn_stats(zip_path: Path, zip_root: Optional[Path] = None, is_audio=False):
+    _zip_path = Path.joinpath(zip_root or Path(""), zip_path)
+    with zipfile.ZipFile(_zip_path, mode="r") as f:
+        info = f.infolist()
+
+    mean, square_sum = None, None
+    n_frame = 0
+    for i in tqdm(info):
+        offset, file_size = i.header_offset + 30 + len(i.filename), i.file_size
+        with open(_zip_path, "rb") as f:
+            f.seek(offset)
+            byte_data = f.read(file_size)
+            assert len(byte_data) > 1
+            assert is_npy_data(byte_data), i
+            byte_data_fp = io.BytesIO(byte_data)
+            feature = np.load(byte_data_fp)
+            if mean is None:
+                mean = feature.sum(axis=0)
+                square_sums = (feature ** 2).sum(axis=0)
+            else:
+                mean += feature.sum(axis=0)
+                square_sums += (feature ** 2).sum(axis=0)
+            n_frame += feature.shape[0]
+    mean = mean / n_frame
+    var = square_sums / n_frame - mean ** 2
+    std = np.sqrt(np.maximum(var, 1e-8))
+
+    mean = mean.astype("float32")
+    std  = std.astype("float32")
+
+    dirname = _zip_path.parent
+    np.savetxt(dirname.joinpath("fbank80.mean"), mean, delimiter="\n")
+    np.savetxt(dirname.joinpath("fbank80.std"),  std,  delimiter="\n")
+
+    global_cmvn = {"mean": mean, "std": std}
+    np.save(dirname.joinpath("global_cmvn.npy"), global_cmvn)
+    # global_cmvn = np.load(dirname.joinpath("global_cmvn.npy", allow_pickle=Tue)).tolist()
+    print (f"writing mean and std to directory: {dirname}")
+    return mean, std
+
 
 class S2TDataConfigWriter(object):
     DEFAULT_VOCAB_FILENAME = "dict.txt"

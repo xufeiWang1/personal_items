@@ -18,6 +18,7 @@ from examples.speech_recognition_sjtu.data_utils import (
     gen_vocab,
     get_zip_manifest,
     save_df_to_tsv,
+    compute_cmvn_stats,
 )
 import torchaudio
 from tqdm import tqdm
@@ -63,7 +64,8 @@ def process(args):
         create_zip(feature_root, zip_path)
         print ("Fetching ZIP manifest...")
         audio_paths, audio_lengths = get_zip_manifest(zip_path)
-        # gen_cmvn_stats(zip_path)
+        print ("Computing global cmvn stats")
+        mean, std = compute_cmvn_stats(zip_path)
         print ("Generating manifest...")
 
         manifest = {c: [] for c in MANIFEST_COLUMNS}
@@ -95,7 +97,9 @@ def process(args):
             gen_config_yaml(
                 out_root,
                 spm_filename=spm_filename_prefix + ".model",
-                specaugment_policy="ld"
+                specaugment_policy="ld",
+                cmvn_type="global",
+                gcmvn_path=out_root / "global_cmvn.npy"
             )
         # Clean up
         shutil.rmtree(feature_root)
