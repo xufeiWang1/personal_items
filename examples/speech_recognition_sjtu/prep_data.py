@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 import shutil
 from tempfile import NamedTemporaryFile
+import re
 
 import pandas as pd
 from examples.speech_recognition_sjtu.data_utils import (
@@ -39,25 +40,41 @@ def process(args):
     id2txt = {}
     sample_ids = []
 
-    with open(args.wavscp, "r") as f_wav, open(args.refscp, "r") as f_ref:
-        ### read reference text
-        # format:
-        #      sample_id sentence
-        #  e.g.103-1240-0000 CHAPTER ONE ...
-        for line in f_ref:
-            sample_id = line.split()[0].strip()
+    with open(args.wavscp, "r") as f_wav:
+        # extract fbank80 feature
+        # format example: /mnt/data/librispeech/103-1240-0000.flac CHAPTER ONE ABOUT ...
+        # or            : /mnt/data/librispeech/103-1240-0000.flac[13, 45] CHAPTER ONE ABOUT ...
+        for line in tqdm(f_wav.readlines()):
+            # wavfile = line.strip()
+            wavfile = line.split()[0].strip()
+            m = re.search('^(\S+)\[(\S+),\s*(\S+)\]', wavfile)
+            # for format like: test.wav[1.0,3.2]
+            if m is not None:
+                wavfile = m.group(1)
+                stime = float(m.group(2))
+                etime = float(m.group(3))
+                audiometadata = torchaudio.backend.sox_io_backend.info(wavfile)
+                sample_rate = audiometadata.sample_rate
+                # num_frame = audiometadata.num_frames
+                ssample = int(stime * sample_rate)
+                nsample = int((etime-stime)*sample_rate)
+
+            else:
+                ssample = 0
+                nsample = -1
+
+            sample_id = Path(wavfile).stem
+
             sent = ' '.join(line.split()[1:]).strip()
             id2txt[sample_id] = sent
 
-        # extract fbank80 feature
-        # format: /mnt/data/librispeech/103-1240-0000.flac
-        for line in tqdm(f_wav.readlines()):
-            wavfile = line.strip()
-            sample_id = Path(wavfile).stem
-            wav, sample_rate = torchaudio.backend.sox_io_backend.load(wavfile)
+            wav, sample_rate = torchaudio.backend.sox_io_backend.load(wavfile, frame_offset=ssample, num_frames=nsample)
             extract_fbank_features(wav, sample_rate, feature_root/f"{sample_id}.npy")
+            if sample_rate != args.target_sample_rate:
+                wav = F.resample(wav, sample_rate, args.target_sample_rate)
+            sample_rate = args.target_sample_rate
+
             sample_ids.append(sample_id)
-            assert sample_id in id2txt, f"Error: wav file with sample_id ({sample_id}) not found in reference text file"
 
         zip_path = out_root / f"{args.prefix}-fbank80.zip"
         print ("ZIPing features...")
@@ -109,11 +126,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", "-o", required=True, type=str)
     parser.add_argument("--wavscp", "-w", required=True, type=str)
-    parser.add_argument("--refscp", "-r", required=True, type=str)
     parser.add_argument("--for-train", action="store_true")
     parser.add_argument("--prefix", default="train", required=True, type=str)
-    parser.add_argument("--vocab-type", default="unigram", required=True, type=str, choices=["bpe", "unigram", "char"]),
+    parser.add_argument("--vocab-type", default="unigram", type=str, choices=["bpe", "unigram", "char"]),
     parser.add_argument("--vocab-size", default=10000, type=int)
+    parser.add_argument("--target-sample-rate", default=16000, type=int)
     args = parser.parse_args()
 
     process(args)
