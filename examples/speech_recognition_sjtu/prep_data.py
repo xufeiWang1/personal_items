@@ -10,6 +10,11 @@ from pathlib import Path
 import shutil
 from tempfile import NamedTemporaryFile
 import re
+import torchaudio.functional as F
+import librosa
+import numpy as np
+import subprocess
+import tempfile
 
 import pandas as pd
 from examples.speech_recognition_sjtu.data_utils import (
@@ -34,16 +39,20 @@ def process(args):
     out_root = Path(args.output_root).absolute()
     out_root.mkdir(exist_ok=True)
     # Extract features
-    feature_root = out_root / "fbank80"
+    feature_root = out_root / f"{args.prefix}-fbank80"
     feature_root.mkdir(exist_ok=True)
 
     id2txt = {}
     sample_ids = []
+    prev_wavfile = None
+    counter = 0
 
     with open(args.wavscp, "r") as f_wav:
         # extract fbank80 feature
         # format example: /mnt/data/librispeech/103-1240-0000.flac CHAPTER ONE ABOUT ...
         # or            : /mnt/data/librispeech/103-1240-0000.flac[13, 45] CHAPTER ONE ABOUT ...
+        tempfilename = Path(tempfile.gettempdir()).joinpath(next(tempfile._get_candidate_names())+".wav")
+        # tempfilename = str(tempfilename)
         for line in tqdm(f_wav.readlines()):
             # wavfile = line.strip()
             wavfile = line.split()[0].strip()
@@ -53,27 +62,70 @@ def process(args):
                 wavfile = m.group(1)
                 stime = float(m.group(2))
                 etime = float(m.group(3))
-                audiometadata = torchaudio.backend.sox_io_backend.info(wavfile)
-                sample_rate = audiometadata.sample_rate
-                # num_frame = audiometadata.num_frames
-                ssample = int(stime * sample_rate)
-                nsample = int((etime-stime)*sample_rate)
+                if etime - stime < 0.2:
+                    continue
+
+                if True:
+                    if wavfile != prev_wavfile:
+                        counter = 0
+                        subprocess.run(f"ffmpeg -i {wavfile}  -ar 16000 -f wav -y -loglevel 1 {tempfilename}", shell=True)
+                        wav, sample_rate = torchaudio.backend.sox_io_backend.load(tempfilename)
+                        # wav, sample_rate = torchaudio.backend.sox_io_backend.load(wavfile, frame_offset=0, num_frames=48000)
+                        # print (f"Loading wav file: {wavfile}...")
+                        if sample_rate != args.target_sample_rate:
+                            wav = F.resample(wav, sample_rate, args.target_sample_rate)
+                        # print ("finished resampling")
+                        sample_rate = args.target_sample_rate
+                    else:
+                        counter += 1
+                    sample_id = Path(wavfile).stem + f"_{counter}"
+                    prev_wavfile = wavfile
+                    ssample = int(stime * args.target_sample_rate)
+                    esample = int(etime * args.target_sample_rate)
+
+                    wav_seg = wav[:, ssample:esample]
+
+                    extract_fbank_features(wav_seg, args.target_sample_rate, feature_root/f"{sample_id}.npy")
+                else:
+                    if wavfile != prev_wavfile:
+                        subprocess.run(f"ffmpeg -i {wavfile}  -ar 16000 -f wav -y -loglevel 1 {tempfilename}", shell=True)
+                        counter = 0
+                    else:
+                        counter += 1
+                    sample_id = Path(wavfile).stem + f"_{counter}"
+                    metadata = torchaudio.backend.sox_io_backend.info(tempfilename)
+
+                    sample_rate = 16000
+                    ssample = int(stime*sample_rate)
+                    nsample = int((etime-stime)*sample_rate)
+                    wav, sample_rate = torchaudio.backend.sox_io_backend.load(tempfilename, frame_offset=ssample, num_frames=nsample)
+
+                    if sample_rate != args.target_sample_rate:
+                        wav = F.resample(wav, sample_rate, args.target_sample_rate)
+                    try:
+                        extract_fbank_features(wav, args.target_sample_rate, feature_root/f"{sample_id}.npy")
+                    except Exception as e:
+                        print(e)
+                        print (f"wav size: {wav.size()}, ssample: {ssample}, nsample: {nsample}, metadata: {metadata}")
+                        print ("xiexie0")
+                        exit (0)
+                    prev_wavfile = wavfile
 
             else:
                 ssample = 0
                 nsample = -1
+                sample_id = Path(wavfile).stem
 
-            sample_id = Path(wavfile).stem
+                wav, sample_rate = torchaudio.backend.sox_io_backend.load(wavfile)
+                if sample_rate != args.target_sample_rate:
+                    wav = F.resample(wav, sample_rate, args.target_sample_rate)
+                sample_rate = args.target_sample_rate
+
+                extract_fbank_features(wav, sample_rate, feature_root/f"{sample_id}.npy")
+
 
             sent = ' '.join(line.split()[1:]).strip()
             id2txt[sample_id] = sent
-
-            wav, sample_rate = torchaudio.backend.sox_io_backend.load(wavfile, frame_offset=ssample, num_frames=nsample)
-            extract_fbank_features(wav, sample_rate, feature_root/f"{sample_id}.npy")
-            if sample_rate != args.target_sample_rate:
-                wav = F.resample(wav, sample_rate, args.target_sample_rate)
-            sample_rate = args.target_sample_rate
-
             sample_ids.append(sample_id)
 
         zip_path = out_root / f"{args.prefix}-fbank80.zip"
@@ -81,9 +133,6 @@ def process(args):
         create_zip(feature_root, zip_path)
         print ("Fetching ZIP manifest...")
         audio_paths, audio_lengths = get_zip_manifest(zip_path)
-        print ("Computing global cmvn stats")
-        mean, std = compute_cmvn_stats(zip_path)
-        print ("Generating manifest...")
 
         manifest = {c: [] for c in MANIFEST_COLUMNS}
         for sample_id in sample_ids:
@@ -95,6 +144,12 @@ def process(args):
             manifest["speaker"].append(spk_id)
 
         save_df_to_tsv(pd.DataFrame.from_dict(manifest), out_root/f"{args.prefix}.tsv")
+
+        # compute global CMVN
+        if args.for_train:
+            print ("Computing global cmvn stats")
+            mean, std = compute_cmvn_stats(zip_path)
+            print ("Generating manifest...")
 
         # Generate vocab
         if args.for_train:

@@ -17,7 +17,7 @@ class GlobalCMVN(AudioFeatureTransform):
 
     def __init__(self, stats_npz_path):
         self.stats_npz_path = stats_npz_path
-        stats = np.load(stats_npz_path)
+        stats = np.load(stats_npz_path, allow_pickle=True).tolist()
         self.mean, self.std = stats["mean"], stats["std"]
 
     def __repr__(self):

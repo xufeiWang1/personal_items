@@ -14,10 +14,12 @@ distributed_training:
 dataset:
   num_workers: 4
   max_tokens: 40000
-  train_subset: train
-  valid_subset: dev-clean,dev-other
+  skip_invalid_size_inputs_valid_test: true
+  train_subset: train-m
+  valid_subset: dev
   validate_interval: 1
-  validate_interval_updates: 0
+  validate_interval_updates: 100
+  # validate_interval_updates: 0
   max_tokens_valid: 40000
 
 optimization:
@@ -49,13 +51,13 @@ criterion:
   sentence_avg: false
 
 checkpoint:
-  save_dir: /home/chenxie95/github/fairseq/outputs/asr_librispeech
+  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech
   save_interval_updates: 0
   keep_interval_updates: -1
   no_epoch_checkpoints: false
 
 task:
   _name: speech_recognition
-  data: /mnt/data/librispeech/tempdir
+  data: /mnt/data/GigaSpeech/tempdir
   config_yaml: config.yaml
 
