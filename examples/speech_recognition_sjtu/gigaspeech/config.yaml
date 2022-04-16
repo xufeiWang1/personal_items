@@ -5,7 +5,7 @@ common:
   log_format: json
   tensorboard_logdir: tb
   seed: 1
-  fp16: false
+  fp16: true
 
 distributed_training:
   distributed_world_size: 1
@@ -18,12 +18,11 @@ dataset:
   train_subset: train-m
   valid_subset: dev
   validate_interval: 1
-  validate_interval_updates: 100
-  # validate_interval_updates: 0
+  validate_interval_updates: 0
   max_tokens_valid: 40000
 
 optimization:
-  max_update: 3000
+  max_update: 10000
   clip_norm: 10.0
   sentence_avg: false
   update_freq: [8]

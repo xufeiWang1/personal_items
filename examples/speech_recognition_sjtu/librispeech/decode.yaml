@@ -1,0 +1,29 @@
+# @package _group_
+
+common_eval:
+  path: /home/chenxie95/github/fairseq/outputs/asr_librispeech.orig/checkpoint59.pt
+
+dataset:
+  skip_invalid_size_inputs_valid_test: true
+  max_tokens: 50000
+  gen_subset: test-other
+
+generation:
+  _name: null
+  beam: 5
+
+model:
+  _name: sr_transformer
+  share_decoder_input_output_embed: true
+
+task: 
+  _name: speech_recognition
+  data: /mnt/data/librispeech/LibriSpeech4fairseqs2t/
+  config_yaml: config.yaml
+
+criterion:
+  _name: cross_entropy
+  sentence_avg: true
+
+scoring:
+  _name: wer
