@@ -22,7 +22,7 @@ dataset:
   max_tokens_valid: 40000
 
 optimization:
-  max_update: 10000
+  max_update: 30000
   clip_norm: 10.0
   sentence_avg: false
   update_freq: [8]
