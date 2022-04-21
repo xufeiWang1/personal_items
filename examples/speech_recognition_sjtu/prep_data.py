@@ -15,9 +15,13 @@ import librosa
 import numpy as np
 import subprocess
 import tempfile
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+world_size = comm.Get_size()
 
 import pandas as pd
-from examples.speech_recognition_sjtu.data_utils import (
+from data_utils import (
     create_zip,
     extract_fbank_features,
     gen_config_yaml,
@@ -37,6 +41,8 @@ MANIFEST_COLUMNS = ["id", "audio", "n_frames", "tgt_text", "speaker"]
 
 def process(args):
     out_root = Path(args.output_root).absolute()
+    if world_size > 1:
+        out_root = out_root.with_suffix(f".rank{rank}")
     out_root.mkdir(exist_ok=True)
     # Extract features
     feature_root = out_root / f"{args.prefix}-fbank80"
@@ -46,6 +52,7 @@ def process(args):
     sample_ids = []
     prev_wavfile = None
     counter = 0
+    wav_counter = -1
 
     with open(args.wavscp, "r") as f_wav:
         # extract fbank80 feature
@@ -68,6 +75,12 @@ def process(args):
                 if True:
                     if wavfile != prev_wavfile:
                         counter = 0
+
+                        wav_counter += 1
+                        if wav_counter % world_size != rank:
+                            prev_wavfile = wavfile
+                            continue
+
                         subprocess.run(f"ffmpeg -i {wavfile}  -ar 16000 -f wav -y -loglevel 1 {tempfilename}", shell=True)
                         wav, sample_rate = torchaudio.backend.sox_io_backend.load(tempfilename)
                         # wav, sample_rate = torchaudio.backend.sox_io_backend.load(wavfile, frame_offset=0, num_frames=48000)
@@ -77,6 +90,9 @@ def process(args):
                         # print ("finished resampling")
                         sample_rate = args.target_sample_rate
                     else:
+                        if wav_counter % world_size != rank:
+                            prev_wavfile = wavfile
+                            continue
                         counter += 1
                     sample_id = Path(wavfile).stem + f"_{counter}"
                     prev_wavfile = wavfile
@@ -86,30 +102,6 @@ def process(args):
                     wav_seg = wav[:, ssample:esample]
 
                     extract_fbank_features(wav_seg, args.target_sample_rate, feature_root/f"{sample_id}.npy")
-                else:
-                    if wavfile != prev_wavfile:
-                        subprocess.run(f"ffmpeg -i {wavfile}  -ar 16000 -f wav -y -loglevel 1 {tempfilename}", shell=True)
-                        counter = 0
-                    else:
-                        counter += 1
-                    sample_id = Path(wavfile).stem + f"_{counter}"
-                    metadata = torchaudio.backend.sox_io_backend.info(tempfilename)
-
-                    sample_rate = 16000
-                    ssample = int(stime*sample_rate)
-                    nsample = int((etime-stime)*sample_rate)
-                    wav, sample_rate = torchaudio.backend.sox_io_backend.load(tempfilename, frame_offset=ssample, num_frames=nsample)
-
-                    if sample_rate != args.target_sample_rate:
-                        wav = F.resample(wav, sample_rate, args.target_sample_rate)
-                    try:
-                        extract_fbank_features(wav, args.target_sample_rate, feature_root/f"{sample_id}.npy")
-                    except Exception as e:
-                        print(e)
-                        print (f"wav size: {wav.size()}, ssample: {ssample}, nsample: {nsample}, metadata: {metadata}")
-                        print ("xiexie0")
-                        exit (0)
-                    prev_wavfile = wavfile
 
             else:
                 ssample = 0
@@ -144,6 +136,11 @@ def process(args):
             manifest["speaker"].append(spk_id)
 
         save_df_to_tsv(pd.DataFrame.from_dict(manifest), out_root/f"{args.prefix}.tsv")
+
+
+        if world_size > 1:
+            print(f"using mpirun with size: {world_size}, not extract global cmvn and generate spm model")
+            args.for_train = False
 
         # compute global CMVN
         if args.for_train:

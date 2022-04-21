@@ -1,16 +1,18 @@
 # @package _group_
 
 common_eval:
-  path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech/checkpoint8.pt
+  path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech.lr0.0005/checkpoint5.pt
 
 dataset:
   skip_invalid_size_inputs_valid_test: true
   max_tokens: 50000
-  gen_subset: test
+  gen_subset: dev
 
 generation:
   _name: null
-  beam: 5
+  beam: 20
+  lenpen: 1.0
+  no_repeat_ngram_size: 2
 
 model:
   _name: sr_transformer

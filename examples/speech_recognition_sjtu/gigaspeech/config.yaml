@@ -1,9 +1,11 @@
 # @package _group_ 
 
+
 common:
   log_interval: 100
   log_format: json
   tensorboard_logdir: tb
+  wandb_project: fairseq-gigaspeech
   seed: 1
   fp16: true
 
@@ -22,11 +24,11 @@ dataset:
   max_tokens_valid: 40000
 
 optimization:
-  max_update: 30000
-  clip_norm: 10.0
+  max_update: 60000
+  clip_norm: 5.0
   sentence_avg: false
   update_freq: [8]
-  lr: [0.002]
+  lr: [0.0005]
 
 optimizer:
   _name: adam
@@ -36,11 +38,21 @@ optimizer:
 
 lr_scheduler:
   _name: inverse_sqrt
-  warmup_updates: 1000
+  warmup_updates: 10000
 
 model:
   _name: sr_transformer
   share_decoder_input_output_embed: true
+  encoder_embed_dim: 512
+  encoder_ffn_embed_dim: 2048
+  encoder_layers: 16
+  decoder_embed_dim: 512
+  decoder_ffn_embed_dim: 2048
+  decoder_layers: 6
+  decoder_output_dim: 512
+  encoder_attention_heads: 8
+  decoder_attention_heads: 8
+
 
 criterion:
   _name: label_smoothed_cross_entropy
@@ -50,7 +62,7 @@ criterion:
   sentence_avg: false
 
 checkpoint:
-  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech
+  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech.lr0.0005
   save_interval_updates: 0
   keep_interval_updates: -1
   no_epoch_checkpoints: false
@@ -60,3 +72,6 @@ task:
   data: /mnt/data/GigaSpeech/tempdir
   config_yaml: config.yaml
 
+hydra:
+    run:
+        dir: ${checkpoint.save_dir}
