@@ -34,11 +34,12 @@ class SpeechRecognitionConfig(FairseqConfig):
 class SpeechRecognitionTask(FairseqTask):
     cfg: SpeechRecognitionConfig
 
-    def __init__(self, cfg, tgt_dict):
+    def __init__(self, cfg, tgt_dict, blank_symbol="<blank>"):
         super().__init__(cfg)
         self.tgt_dict = tgt_dict
         self.data_cfg = S2TDataConfig(Path(cfg.data) / cfg.config_yaml)
         self.speaker_to_id = self._get_speaker_to_id()
+        self.blank_symbol = blank_symbol
 
     def _get_speaker_to_id(self):
         speaker_to_id = None

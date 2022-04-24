@@ -4,3 +4,4 @@
 # LICENSE file in the root directory of this source tree.
 
 from .sr_transformer import * # noqa
+from .sr_transducer import * # noqa

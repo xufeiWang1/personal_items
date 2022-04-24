@@ -4,6 +4,7 @@ common:
   log_interval: 100
   log_format: json
   tensorboard_logdir: tb
+  wandb_project: fairseq-librispeech
   seed: 1
   fp16: false
 
@@ -21,7 +22,7 @@ dataset:
   max_tokens_valid: 40000
 
 optimization:
-  max_update: 3000
+  max_update: 90000
   clip_norm: 10.0
   sentence_avg: false
   update_freq: [8]
@@ -49,13 +50,13 @@ criterion:
   sentence_avg: false
 
 checkpoint:
-  save_dir: /home/chenxie95/github/fairseq/outputs/asr_librispeech
+  save_dir: /home/chenxie95/github/fairseq/outputs/asr_librispeech_960h
   save_interval_updates: 0
   keep_interval_updates: -1
   no_epoch_checkpoints: false
 
 task:
   _name: speech_recognition
-  data: /mnt/data/librispeech/tempdir
+  data: /mnt/data/librispeech/data4fairseq
   config_yaml: config.yaml
 

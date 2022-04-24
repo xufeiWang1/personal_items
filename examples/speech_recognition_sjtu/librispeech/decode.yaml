@@ -1,12 +1,12 @@
 # @package _group_
 
 common_eval:
-  path: /home/chenxie95/github/fairseq/outputs/asr_librispeech.orig/checkpoint59.pt
+  path: /home/chenxie95/github/fairseq/outputs/asr_librispeech_960h/checkpoint36.pt
 
 dataset:
   skip_invalid_size_inputs_valid_test: true
   max_tokens: 50000
-  gen_subset: test-other
+  gen_subset: dev-clean
 
 generation:
   _name: null
@@ -18,7 +18,7 @@ model:
 
 task: 
   _name: speech_recognition
-  data: /mnt/data/librispeech/LibriSpeech4fairseqs2t/
+  data: /mnt/data/librispeech/data4fairseq
   config_yaml: config.yaml
 
 criterion:

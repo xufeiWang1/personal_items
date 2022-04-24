@@ -25,9 +25,10 @@ class Dictionary:
         pad="<pad>",
         eos="</s>",
         unk="<unk>",
+        blank="<blank>",   # for transducer and ctc model
         extra_special_symbols=None,
     ):
-        self.bos_word, self.unk_word, self.pad_word, self.eos_word = bos, unk, pad, eos
+        self.bos_word, self.unk_word, self.pad_word, self.eos_word, self.blank = bos, unk, pad, eos, blank
         self.symbols = []
         self.count = []
         self.indices = {}
@@ -35,6 +36,7 @@ class Dictionary:
         self.pad_index = self.add_symbol(pad)
         self.eos_index = self.add_symbol(eos)
         self.unk_index = self.add_symbol(unk)
+        self.blank_index = self.add_symbol(blank)
         if extra_special_symbols:
             for s in extra_special_symbols:
                 self.add_symbol(s)
