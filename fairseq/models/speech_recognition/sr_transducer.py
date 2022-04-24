@@ -208,11 +208,18 @@ class S2TTransducerModel(BaseFairseqModel):
         """
         encoder_outs = self.encoder(src_tokens=src_tokens, src_lengths=src_lengths)
         encoder_out = encoder_outs['encoder_out'][0]
+        encoder_out_lengths = encoder_outs['encoder_out_lengths'][0]
         # decoder_outs = self.decoder(src_tokens=prev_output_tokens, src_lengths=target_lengths)
-        decoder_outs = self.decoder(src_tokens=prev_output_tokens)
+
+        # current rnnt_loss requires the out dim: B x T x (L+1) x D
+        # padding <eos> at the end of each batch
+        pad_output_tokens = prev_output_tokens.new(prev_output_tokens.size(0), 1).fill_(2)
+        full_output_tokens = torch.cat((prev_output_tokens, pad_output_tokens),dim=1)
+        decoder_outs = self.decoder(src_tokens=full_output_tokens)
+        # decoder_outs = self.decoder(src_tokens=prev_output_tokens)
         decoder_out = decoder_outs['encoder_out'][0]
         jointnet_out = self.jointnet(encoder_out, decoder_out)
-        return jointnet_out, src_lengths//4
+        return jointnet_out, encoder_out_lengths
 
 
 class SRTransformerEncoder(FairseqEncoder):
@@ -273,6 +280,7 @@ class SRTransformerEncoder(FairseqEncoder):
 
         return {
             "encoder_out": [x],  # T x B x C
+            "encoder_out_lengths": [input_lengths],
             "encoder_padding_mask": [encoder_padding_mask]
             if encoder_padding_mask.any()
             else [],  # B x T

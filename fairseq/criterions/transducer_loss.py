@@ -76,13 +76,14 @@ class TransducerLossCriterion(FairseqCriterion):
         # target_lengths:      B
         # encoder_out_lengths.max() == T
         # target_lenths.max() == L
-        gap_length = net_output.size(1) - encoder_out_lengths.max()
-        encoder_out_lengths += gap_length
+        # gap_length = net_output.size(1) - encoder_out_lengths.max()
+        # encoder_out_lengths += gap_length
         loss = rnnt_loss(
             net_output,
-            sample["target"][:, :-1].int().contiguous(),  # exclude the last EOS column
+            # sample["target"][:, :-1].int().contiguous(),  # exclude the last EOS column
+            sample["target"].int(),
             encoder_out_lengths.int(),
-            target_lengths-1,
+            target_lengths,
             blank=self.blank_idx,
             clamp=-1.0,
             reduction=("sum" if reduce else "none"),
