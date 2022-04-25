@@ -257,7 +257,7 @@ class LSTMEncoder(FairseqEncoder):
     def forward(
         self,
         src_tokens: Tensor,
-        src_lengths: Tensor,
+        src_lengths: Optional[Tensor] = None,
         enforce_sorted: bool = True,
     ):
         """
@@ -289,11 +289,6 @@ class LSTMEncoder(FairseqEncoder):
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
 
-        # pack embedded source tokens into a PackedSequence
-        packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, src_lengths.cpu(), enforce_sorted=enforce_sorted
-        )
-
         # apply LSTM
         if self.bidirectional:
             state_size = 2 * self.num_layers, bsz, self.hidden_size
@@ -301,12 +296,24 @@ class LSTMEncoder(FairseqEncoder):
             state_size = self.num_layers, bsz, self.hidden_size
         h0 = x.new_zeros(*state_size)
         c0 = x.new_zeros(*state_size)
-        packed_outs, (final_hiddens, final_cells) = self.lstm(packed_x, (h0, c0))
 
-        # unpack outputs and apply dropout
-        x, _ = nn.utils.rnn.pad_packed_sequence(
-            packed_outs, padding_value=self.padding_idx * 1.0
-        )
+        if src_lengths is not None:
+            # pack embedded source tokens into a PackedSequence
+            packed_x = nn.utils.rnn.pack_padded_sequence(
+                x, src_lengths.cpu(), enforce_sorted=enforce_sorted
+            )
+
+            packed_outs, (final_hiddens, final_cells) = self.lstm(packed_x, (h0, c0))
+
+            # unpack outputs and apply dropout
+            x, _ = nn.utils.rnn.pad_packed_sequence(
+                packed_outs, padding_value=self.padding_idx * 1.0
+            )
+        else:
+            x, (final_hiddens, final_cells) = self.lstm(x, (h0, c0))
+
+
+
         x = self.dropout_out_module(x)
         assert list(x.size()) == [seqlen, bsz, self.output_units]
 

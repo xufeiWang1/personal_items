@@ -20,6 +20,7 @@ from fairseq.models import (
     register_model,
     register_model_architecture,
 )
+from fairseq.models.lstm import LSTMEncoder
 from fairseq.models.speech_to_text.hub_interface import S2THubInterface
 from fairseq.models.transformer import Embedding, TransformerEncoder
 from fairseq.modules import (
@@ -109,7 +110,10 @@ class SRTransducerConfig(FairseqDataclass):
     max_source_positions: int = 6000
 
     #### decoder config
-    decoder_type: str = "transformer"
+    # decoder_type: str = "transformer"
+    decoder_type: str = "lstm"
+
+    # transformer
     decoder_attention_heads: int = 4
     decoder_embed_dim: int = 256
     decoder_ffn_embed_dim: int = 256*8
@@ -119,6 +123,12 @@ class SRTransducerConfig(FairseqDataclass):
     share_decoder_input_output_embed: bool = False
     decoder_layerdrop: float = 0.0
     decoder_output_dim: int = 256
+
+    # lstm
+    decoder_hidden_size: int = 256
+    decoder_num_layers: int  = 2
+    decoder_dropout_in: float = 0.1
+    decoder_dropout_out: float = 0.1
 
     #### jointnet config
     joint_dim: int = 256
@@ -163,7 +173,13 @@ class S2TTransducerModel(BaseFairseqModel):
 
     @classmethod
     def build_decoder(cls, args, task, embed_tokens):
-        return TransducerTransformerDecoder(args, task.target_dictionary, embed_tokens)
+        if args.decoder_type.lower() == "transformer":
+            return TransducerTransformerDecoder(args, task.target_dictionary, embed_tokens)
+        elif args.decoder_type.lower() == "lstm":
+            return TransducerLSTMDecoder(args, task.target_dictionary, embed_tokens)
+        else:
+            raise RuntimeError(f"Unknow Transducer Decoder type: {args.decoder_type}")
+
 
     @classmethod
     def build_jointnet(cls, args, task):
@@ -215,7 +231,8 @@ class S2TTransducerModel(BaseFairseqModel):
         # padding <eos> at the end of each batch
         pad_output_tokens = prev_output_tokens.new(prev_output_tokens.size(0), 1).fill_(2)
         full_output_tokens = torch.cat((prev_output_tokens, pad_output_tokens),dim=1)
-        decoder_outs = self.decoder(src_tokens=full_output_tokens)
+        # decoder_outs = self.decoder.forward_scriptable(src_tokens=full_output_tokens, src_lengths=src_lengths)
+        decoder_outs = self.decoder.forward_scriptable(src_tokens=full_output_tokens)
         # decoder_outs = self.decoder(src_tokens=prev_output_tokens)
         decoder_out = decoder_outs['encoder_out'][0]
         jointnet_out = self.jointnet(encoder_out, decoder_out)
@@ -345,9 +362,27 @@ class SRTransformerEncoder(FairseqEncoder):
         self.num_updates = num_updates
 
 # TODO
-class TransducerLSTMDecoder(nn.Module):
-    def __init__(self):
-        raise NotImplementedError
+class TransducerLSTMDecoder(LSTMEncoder):
+    def __init__(self, args, dictionary, embed_tokens):
+        super().__init__(dictionary, args.decoder_embed_dim,
+                         args.decoder_hidden_size, args.decoder_num_layers,
+                         args.decoder_dropout_in, args.decoder_dropout_out,
+                         )
+
+
+    def forward_scriptable(self,
+                src_tokens,
+                src_lengths: Optional[torch.Tensor] = None,
+                enforce_sorted: bool=False,):
+        x, final_hiddens, final_cells, encoder_padding_mask = self.forward(src_tokens, src_lengths, enforce_sorted)
+
+        return {
+            "encoder_out": [x],  # T x B x C
+            "final_hiddens": [final_hiddens], # num_layer x B x C
+            "final_cells": [final_cells], # num_layer x B x C
+            "encoder_padding_mask": [encoder_padding_mask] # seq_len x batch
+        }
+
 
 class TransducerTransformerDecoder(TransformerEncoder):
     def __init__(self, args, dictionary, embed_tokens):
