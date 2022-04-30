@@ -117,6 +117,45 @@ class SpeechRecognitionTask(FairseqTask):
         seq_gen_cls=None,
         extra_gen_cls_kwargs=None,
     ):
+
+        # transducer model
+        # print ("xiexie0: ", self.cfg.criterion)
+        # exit (0)
+        if args.criterion_name == "transducer_loss":
+            from fairseq.infer.transducer_beam_search_decoder import TransducerBeamSearchDecoder
+            from fairseq.infer.transducer_greedy_decoder import TransducerGreedyDecoder
+            extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
+            if getattr(args, "print_alignment", False):
+                extra_gen_cls_kwargs["print_alignment"] = True
+
+            if seq_gen_cls is None:
+                if getattr(args, "beam", 1) == 1:
+                    seq_gen_cls = TransducerGreedyDecoder
+                else:
+                    seq_gen_cls = TransducerBeamSearchDecoder
+
+            return seq_gen_cls(
+                models,
+                self.target_dictionary,
+                temperature=getattr(args, "temperature", 1.0),
+                # the arguments below are not being used in :class:`~TransducerGreedyDecoder`
+                beam_size=getattr(args, "beam", 1),
+                normalize_scores=(not getattr(args, "unnormalized", False)),
+                max_num_expansions_per_step=getattr(
+                    args, "transducer_max_num_expansions_per_step", 2
+                ),
+                expansion_beta=getattr(args, "transducer_expansion_beta", 0),
+                expansion_gamma=getattr(args, "transducer_expansion_gamma", None),
+                prefix_alpha=getattr(args, "transducer_prefix_alpha", None),
+                **extra_gen_cls_kwargs,
+            )
+
+
+        # ctc model
+        elif args.criterion_name == "ctc_loss":
+            raise NotImplementedError
+
+        # seq2seq model
         if self.data_cfg.prepend_tgt_lang_tag and args.prefix_size != 1:
             raise ValueError(
                 'Please set "--prefix-size 1" since '

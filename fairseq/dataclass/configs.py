@@ -986,6 +986,27 @@ class GenerationConfig(FairseqDataclass):
         metadata={"help": "if set, dont use seed for initializing random generators"},
     )
 
+    criterion_name: str = field(
+        default="transducer_loss",
+        metadata={"help": "choose to use transducer, ctc or aed model"},
+    )
+
+    transducer_expansion_beta: int = field(
+        default=1,
+        metadata={"help": "used for transducer decoding"},
+    )
+
+
+    transducer_expansion_gamma: float = field(
+        default=1.0,
+        metadata={"help": "used for transducer decoding"},
+    )
+
+    transducer_prefix_alpha: float = field(
+        default=1.0,
+        metadata={"help": "used for transducer decoding"},
+    )
+
 
 @dataclass
 class CommonEvalConfig(FairseqDataclass):

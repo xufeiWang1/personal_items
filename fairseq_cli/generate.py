@@ -272,6 +272,11 @@ def _main(cfg: DictConfig, output_file):
                 detok_hypo_str = decode_fn(hypo_str)
                 if not cfg.common_eval.quiet:
                     score = hypo["score"] / math.log(2)  # convert to base 2
+
+                    #TODO: add to symbols_to_strip_from_output
+                    hypo_str = hypo_str.replace("<blank> ", "")
+                    detok_hypo_str = detok_hypo_str.replace("<blank>", "")
+
                     # original hypothesis (after tokenization and BPE)
                     print(
                         "H-{}\t{}\t{}".format(sample_id, score, hypo_str),
@@ -282,21 +287,22 @@ def _main(cfg: DictConfig, output_file):
                         "D-{}\t{}\t{}".format(sample_id, score, detok_hypo_str),
                         file=output_file,
                     )
-                    print(
-                        "P-{}\t{}".format(
-                            sample_id,
-                            " ".join(
-                                map(
-                                    lambda x: "{:.4f}".format(x),
-                                    # convert from base e to base 2
-                                    hypo["positional_scores"]
-                                    .div_(math.log(2))
-                                    .tolist(),
-                                )
+                    if "positional_scores" in hypo:
+                        print(
+                            "P-{}\t{}".format(
+                                sample_id,
+                                " ".join(
+                                    map(
+                                        lambda x: "{:.4f}".format(x),
+                                        # convert from base e to base 2
+                                        hypo["positional_scores"]
+                                        .div_(math.log(2))
+                                        .tolist(),
+                                    )
+                                ),
                             ),
-                        ),
-                        file=output_file,
-                    )
+                            file=output_file,
+                        )
 
                     if cfg.generation.print_alignment == "hard":
                         print(

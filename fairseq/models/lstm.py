@@ -259,6 +259,8 @@ class LSTMEncoder(FairseqEncoder):
         src_tokens: Tensor,
         src_lengths: Optional[Tensor] = None,
         enforce_sorted: bool = True,
+        h0: Optional[Tensor] = None,
+        c0: Optional[Tensor] = None,
     ):
         """
         Args:
@@ -294,8 +296,13 @@ class LSTMEncoder(FairseqEncoder):
             state_size = 2 * self.num_layers, bsz, self.hidden_size
         else:
             state_size = self.num_layers, bsz, self.hidden_size
-        h0 = x.new_zeros(*state_size)
-        c0 = x.new_zeros(*state_size)
+
+        if h0 is None:
+            assert c0 is None
+            h0 = x.new_zeros(*state_size)
+            c0 = x.new_zeros(*state_size)
+        else:
+            assert h0.size() == state_size
 
         if src_lengths is not None:
             # pack embedded source tokens into a PackedSequence

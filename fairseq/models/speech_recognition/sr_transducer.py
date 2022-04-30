@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq import checkpoint_utils, utils
 from fairseq.data.data_utils import lengths_to_padding_mask
 from fairseq.dataclass.configs import FairseqDataclass
@@ -235,6 +236,10 @@ class S2TTransducerModel(BaseFairseqModel):
         decoder_outs = self.decoder.forward_scriptable(src_tokens=full_output_tokens)
         # decoder_outs = self.decoder(src_tokens=prev_output_tokens)
         decoder_out = decoder_outs['encoder_out'][0]
+
+        encoder_out = encoder_out.transpose(0, 1)
+        decoder_out = decoder_out.transpose(0, 1)
+
         jointnet_out = self.jointnet(encoder_out, decoder_out)
         return jointnet_out, encoder_out_lengths
 
@@ -361,7 +366,7 @@ class SRTransformerEncoder(FairseqEncoder):
         super().set_num_updates(num_updates)
         self.num_updates = num_updates
 
-# TODO
+@with_incremental_state
 class TransducerLSTMDecoder(LSTMEncoder):
     def __init__(self, args, dictionary, embed_tokens):
         super().__init__(dictionary, args.decoder_embed_dim,
@@ -382,6 +387,123 @@ class TransducerLSTMDecoder(LSTMEncoder):
             "final_cells": [final_cells], # num_layer x B x C
             "encoder_padding_mask": [encoder_padding_mask] # seq_len x batch
         }
+
+    def extract_features(self,
+                         prev_output_tokens,
+                         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+                         **unused,):
+        """
+        Similar to *forward* but only return features.
+
+        Returns:
+            tuple:
+                - the decoder's features of shape `(batch, tgt_len, embed_dim)`
+                - attention weights of shape `(batch, tgt_len, src_len)`
+        """
+
+        if (
+            incremental_state is not None
+            and self._get_full_incremental_state_key("cached_state")
+            in incremental_state
+        ):
+            prev_output_tokens = prev_output_tokens[:, -1:]
+
+        bsz, seqlen = prev_output_tokens.size()
+
+        # embed tokens
+        # x = self.embed_tokens(prev_output_tokens)
+        # x = self.dropout_in_module(x)
+
+        # B x T x C -> T x B x C
+        # x = x.transpose(0, 1)
+
+        # initialize previous states (or get from cache during incremental generation)
+        if (
+            incremental_state is not None
+            and self._get_full_incremental_state_key("cached_state")
+            in incremental_state
+        ):
+            prev_hiddens, prev_cells = self.get_cached_state(
+                incremental_state
+            )
+        else:
+            # zero_state = prev_output_tokens.new_zeros(bsz, self.hidden_size)
+            # prev_hiddens = [zero_state for i in range(self.num_layers)]
+            # prev_cells = [zero_state for i in range(self.num_layers)]
+            prev_hiddens = prev_output_tokens.new_zeros((self.num_layers, bsz, self.hidden_size), dtype=torch.float)
+            prev_cells = prev_output_tokens.new_zeros((self.num_layers, bsz, self.hidden_size), dtype=torch.float)
+
+        # outs = []
+
+        x, hiddens, cells, _ = self.forward(prev_output_tokens, h0=prev_hiddens, c0=prev_cells)
+
+        '''
+        for j in range(seqlen):
+            input = x[j, :, :]
+
+            for i, rnn in enumerate(self.layers):
+                # recurrent cell
+                hidden, cell = rnn(input, (prev_hiddens[i], prev_cells[i]))
+                input = hidden
+                input = self.dropout_out_module(input)
+
+                # save state for next time step
+                prev_hiddens[i] = hidden
+                prev_cells[i] = cell
+
+            # save final output
+            outs.append(input)
+        '''
+
+        # Stack all the necessary tensors together and store
+        # prev_hiddens_tensor = torch.stack(prev_hiddens)
+        # prev_cells_tensor = torch.stack(prev_cells)
+        """
+        cache_state = torch.jit.annotate(
+            Dict[str, Optional[Tensor]],
+            {
+                "prev_hiddens": prev_hiddens_tensor,
+                "prev_cells": prev_cells_tensor,
+            },
+        )
+        """
+        cache_state = torch.jit.annotate(
+            Dict[str, Optional[Tensor]],
+            {
+                "prev_hiddens": hiddens,
+                "prev_cells": cells,
+            },
+        )
+        self.set_incremental_state(incremental_state, "cached_state", cache_state)
+
+        # collect outputs across time steps
+        # x = torch.cat(outs, dim=0).view(seqlen, bsz, -1)
+        # assert x.size(2) == self.hidden_size
+        # x = outs
+
+        # T x B x C -> B x T x C
+        x = x.transpose(1, 0)
+
+        attn_scores = None
+
+        return x, attn_scores
+
+    def get_cached_state(
+        self,
+        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
+    ) -> Tuple[List[Tensor], List[Tensor], Optional[Tensor]]:
+        cached_state = self.get_incremental_state(incremental_state, "cached_state")
+        assert cached_state is not None
+        prev_hiddens_ = cached_state["prev_hiddens"]
+        assert prev_hiddens_ is not None
+        prev_cells_ = cached_state["prev_cells"]
+        # assert prev_cells_ is not None
+        # prev_hiddens = [prev_hiddens_[i] for i in range(self.num_layers)]
+        # prev_cells = [prev_cells_[j] for j in range(self.num_layers)]
+        return prev_hiddens_, prev_cells_
+
+
+
 
 
 class TransducerTransformerDecoder(TransformerEncoder):
@@ -536,13 +658,52 @@ class JointNet(nn.Module):
         self.fc_out = nn.Linear(self.joint_dim, self.out_dim)
         nn.init.normal_(self.fc_out.weight, mean=0, std=self.joint_dim**-0.5)
 
-    # encoder_out: T x B x C
-    # decoder_out: L x B X C
+        self.onnx_trace = False
+        self.adaptive_softmax = None
+
+    # encoder_out: B x T x C
+    # decoder_out: B X U x C
     def forward(self, encoder_out, decoder_out, apply_output_layer=True):
-        encoder_out = self.laynorm_proj_encoder(self.proj_encoder(encoder_out)).transpose(0, 1)
-        decoder_out = self.laynorm_proj_decoder(self.proj_decoder(decoder_out)).transpose(0, 1)
+        encoder_out = self.laynorm_proj_encoder(self.proj_encoder(encoder_out))
+        decoder_out = self.laynorm_proj_decoder(self.proj_decoder(decoder_out))
         out = nn.functional.relu(encoder_out.unsqueeze(2) + decoder_out.unsqueeze(1))
         if apply_output_layer:
             out = self.fc_out(out)
         return out
 
+
+    def get_normalized_probs(
+        self,
+        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
+        log_probs: bool,
+        sample: Optional[Dict[str, Tensor]] = None,
+    ):
+        """Get normalized probabilities (or log probs) from a net's output."""
+        return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
+
+    # TorchScript doesn't support super() method so that the scriptable Subclass
+    # can't access the base class model in Torchscript.
+    # Current workaround is to add a helper function with different name and
+    # call the helper function from scriptable Subclass.
+    def get_normalized_probs_scriptable(
+        self,
+        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
+        log_probs: bool = True,
+        sample: Optional[Dict[str, Tensor]] = None,
+    ):
+        """Get normalized probabilities (or log probs) from a net's output."""
+
+        if hasattr(self, "adaptive_softmax") and self.adaptive_softmax is not None:
+            if sample is not None:
+                assert "target" in sample
+                target = sample["target"]
+            else:
+                target = None
+            out = self.adaptive_softmax.get_log_prob(net_output[0], target=target)
+            return out.exp_() if not log_probs else out
+
+        logits = net_output[0]
+        if log_probs:
+            return utils.log_softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
+        else:
+            return utils.softmax(logits, dim=-1, onnx_trace=self.onnx_trace)
