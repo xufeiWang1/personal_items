@@ -28,7 +28,7 @@ class Dictionary:
         blank="<blank>",   # for transducer and ctc model
         extra_special_symbols=None,
     ):
-        self.bos_word, self.unk_word, self.pad_word, self.eos_word, self.blank = bos, unk, pad, eos, blank
+        self.bos_word, self.unk_word, self.pad_word, self.eos_word, self.blank_word = bos, unk, pad, eos, blank
         self.symbols = []
         self.count = []
         self.indices = {}
@@ -75,6 +75,7 @@ class Dictionary:
         extra_symbols_to_ignore=None,
         unk_string=None,
         include_eos=False,
+        include_blank=False,
         separator=" ",
     ):
         """Helper for converting a tensor of token indices to a string.
@@ -96,6 +97,8 @@ class Dictionary:
         extra_symbols_to_ignore = set(extra_symbols_to_ignore or [])
         if not include_eos:
             extra_symbols_to_ignore.add(self.eos())
+        if not include_blank:
+            extra_symbols_to_ignore.add(self.blank())
 
         def token_string(i):
             if i == self.unk():
@@ -213,6 +216,9 @@ class Dictionary:
     def unk(self):
         """Helper to get index of unk symbol"""
         return self.unk_index
+
+    def blank(self):
+        return self.blank_index
 
     @classmethod
     def load(cls, f):
