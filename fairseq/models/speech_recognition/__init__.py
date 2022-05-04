@@ -5,3 +5,4 @@
 
 from .sr_transformer import * # noqa
 from .sr_transducer import * # noqa
+from .sr_ctc import * # noqa
