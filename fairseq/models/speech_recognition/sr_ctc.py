@@ -176,7 +176,7 @@ class S2TCTCModel(BaseFairseqModel):
         lprobs.batch_first = True
         return lprobs
 
-    def forward(self, src_tokens, src_lengths, prev_output_tokens):
+    def forward(self, src_tokens, src_lengths, prev_output_tokens=None):
         """
         The forward method inherited from the base class has a **kwargs
         argument in its input, which is not supported in torchscript. This

@@ -153,7 +153,9 @@ class SpeechRecognitionTask(FairseqTask):
 
         # ctc model
         elif args.criterion_name == "ctc_loss":
-            raise NotImplementedError
+            # from examples.speech_recognition.new.decoders.decoder import Decoder
+            from fairseq.infer.decoders.decoder import Decoder
+            return Decoder(args, self.target_dictionary)
 
         # seq2seq model
         if self.data_cfg.prepend_tgt_lang_tag and args.prefix_size != 1:
