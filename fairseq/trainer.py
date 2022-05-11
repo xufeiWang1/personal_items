@@ -861,6 +861,13 @@ class Trainer(object):
                 )
                 raise
 
+            # set a flag file (train.done) to force the exit of current run
+            done_file = os.path.join(self.cfg.checkpoint.save_dir, "train.done")
+            if os.path.exists(done_file):
+                # self.set_lr(-1e8)
+                # self.cfg.optimization.max_update = 0
+                exit(0)
+
             if self.tpu and i < len(samples) - 1:
                 # tpu-comment: every XLA operation before marking step is
                 # appended to the IR graph, and processing too many batches
@@ -1186,6 +1193,9 @@ class Trainer(object):
     def get_lr(self):
         """Get the current learning rate."""
         return self.optimizer.get_lr()
+
+    def set_lr(self, new_lr):
+        self.optimizer.set_lr(new_lr)
 
     def get_model(self):
         """Get the (non-wrapped) model instance."""

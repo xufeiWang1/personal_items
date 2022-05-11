@@ -120,7 +120,7 @@ class SRTransformerConfig(FairseqDataclass):
 
 
 @register_model("sr_transformer", dataclass=SRTransformerConfig)
-class S2TTransformerModel(FairseqEncoderDecoderModel):
+class SRTransformerModel(FairseqEncoderDecoderModel):
     """Adapted Transformer model (https://arxiv.org/abs/1706.03762) for
     speech-to-text tasks. The Transformer encoder/decoder remains the same.
     A trainable input subsampler is prepended to the Transformer encoder to

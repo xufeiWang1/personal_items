@@ -1,0 +1,34 @@
+# @package _group_
+
+common_eval:
+  path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_nocmvn/checkpoint49.pt
+  # path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_nocmvn/avg5.pt
+
+dataset:
+  skip_invalid_size_inputs_valid_test: true
+  max_tokens: 50000
+  gen_subset: dev
+
+generation:
+  _name: null
+  criterion_name: ctc_loss
+  type: viterbi
+
+model:
+  _name: sr_ctc
+  encoder_embed_dim: 512
+  encoder_ffn_embed_dim: 2048
+  encoder_attention_heads: 8
+  encoder_layers: 12
+  outproj_dim: 512
+
+task: 
+  _name: speech_recognition
+  data: /mnt/data/GigaSpeech/tempdir
+  config_yaml: config.yaml
+
+criterion:
+  _name: ctc_loss 
+
+scoring:
+  _name: wer

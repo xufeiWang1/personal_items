@@ -39,9 +39,6 @@ def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
     if trainer.data_parallel_rank == 0:
         os.makedirs(cfg.save_dir, exist_ok=True)
 
-    # set a flag file (train.done) to force the exit of current run
-    if os.path.exists(os.path.join(cfg.save_dir, "train.done")):
-        exit(0)
 
     prev_best = getattr(save_checkpoint, "best", val_loss)
     if val_loss is not None:

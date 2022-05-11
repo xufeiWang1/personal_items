@@ -1,0 +1,77 @@
+# @package _group_ 
+
+
+common:
+  log_interval: 100
+  log_format: json
+  tensorboard_logdir: tb
+  wandb_project: fairseq-gigaspeech
+  seed: 1
+  fp16: true
+
+distributed_training:
+  distributed_world_size: 1
+  ddp_backend: pytorch_ddp
+
+dataset:
+  num_workers: 4
+  max_tokens: 10000
+  skip_invalid_size_inputs_valid_test: true
+  train_subset: train-m
+  valid_subset: dev
+  validate_interval: 1
+  validate_interval_updates: 0
+  max_tokens_valid: 10000
+
+optimization:
+  max_update: 120000
+  clip_norm: 5.0
+  sentence_avg: false
+  update_freq: [8]
+  lr: [0.0005]
+
+optimizer:
+  _name: adam
+  adam_betas: (0.9,0.999)
+  adam_eps: 1.0e-08
+  weight_decay: 0.01
+
+lr_scheduler:
+  _name: inverse_sqrt
+  warmup_updates: 10000
+
+model:
+  _name: sr_transducer
+  encoder_embed_dim: 512
+  encoder_ffn_embed_dim: 2048
+  encoder_layers: 16
+  decoder_embed_dim: 512
+  decoder_ffn_embed_dim: 2048
+  decoder_layers: 6
+  decoder_output_dim: 512
+  encoder_attention_heads: 8
+  decoder_attention_heads: 8
+  decoder_hidden_size: 512
+  decoder_num_layers: 2
+  decoder_dropout_in: 0.1
+  decoder_dropout_out: 0.1
+  joint_dim: 512
+
+
+criterion:
+  _name: transducer_loss
+
+checkpoint:
+  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_transducer
+  save_interval_updates: 0
+  keep_interval_updates: -1
+  no_epoch_checkpoints: false
+
+task:
+  _name: speech_recognition
+  data: /mnt/data/GigaSpeech/tempdir
+  config_yaml: config.yaml
+
+hydra:
+    run:
+        dir: ${checkpoint.save_dir}
