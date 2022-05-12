@@ -33,54 +33,9 @@ from fairseq.modules import (
 
 logger = logging.getLogger(__name__)
 
-
-class Conv1dSubsampler(nn.Module):
-    """Convolutional subsampler: a stack of 1D convolution (along temporal
-    dimension) followed by non-linear activation via gated linear units
-    (https://arxiv.org/abs/1911.08460)
-
-    Args:
-        in_channels (int): the number of input channels
-        mid_channels (int): the number of intermediate channels
-        out_channels (int): the number of output channels
-        kernel_sizes (List[int]): the kernel size for each convolutional layer
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        mid_channels: int,
-        out_channels: int,
-        kernel_sizes: List[int] = (3, 3),
-    ):
-        super(Conv1dSubsampler, self).__init__()
-        self.n_layers = len(kernel_sizes)
-        self.conv_layers = nn.ModuleList(
-            nn.Conv1d(
-                in_channels if i == 0 else mid_channels // 2,
-                mid_channels if i < self.n_layers - 1 else out_channels * 2,
-                k,
-                stride=2,
-                padding=k // 2,
-            )
-            for i, k in enumerate(kernel_sizes)
-        )
-
-    def get_out_seq_lens_tensor(self, in_seq_lens_tensor):
-        out = in_seq_lens_tensor.clone()
-        for _ in range(self.n_layers):
-            out = ((out.float() - 1) / 2 + 1).floor().long()
-        return out
-
-    def forward(self, src_tokens, src_lengths):
-        bsz, in_seq_len, _ = src_tokens.size()  # B x T x (C x D)
-        x = src_tokens.transpose(1, 2).contiguous()  # -> B x (C x D) x T
-        for conv in self.conv_layers:
-            x = conv(x)
-            x = nn.functional.glu(x, dim=1)
-        _, _, out_seq_len = x.size()
-        x = x.transpose(1, 2).transpose(0, 1).contiguous()  # -> T x B x (C x D)
-        return x, self.get_out_seq_lens_tensor(src_lengths)
+from fairseq.models.speech_recognition import Conv1dSubsampler
+from fairseq.models.speech_recognition.transformer_encoder import SRTransformerEncoder
+from fairseq.models.speech_recognition.conformer_encoder import SRConformerEncoder
 
 
 @dataclass
@@ -93,6 +48,7 @@ class SRTransducerConfig(FairseqDataclass):
     input_channels: int = 1
 
     #### encoder config
+    encoder_type: str = "transformer"
     encoder_embed_dim: int = 256
     encoder_ffn_embed_dim: int = 256 * 8
     encoder_attention_heads: int = 4
@@ -109,6 +65,11 @@ class SRTransducerConfig(FairseqDataclass):
     adaptive_input: bool = False
     no_scale_embedding: bool = False
     max_source_positions: int = 6000
+    # for conformer encoder
+    pos_enc_type: str = "rel_pos"
+    depthwise_conv_kernel_size: int = 31
+    attn_type: Optional[str] = "espnet"
+    fp16: bool = False
 
     #### decoder config
     # decoder_type: str = "transformer"
@@ -158,7 +119,12 @@ class S2TTransducerModel(BaseFairseqModel):
 
     @classmethod
     def build_encoder(cls, args):
-        encoder = SRTransformerEncoder(args)
+        if args.encoder_type == "transformer":
+            encoder = SRTransformerEncoder(args)
+        elif args.encoder_type == "conformer":
+            encoder = SRConformerEncoder(args)
+        else:
+            raise NotImplemented
         pretraining_path = getattr(args, "load_pretrained_encoder_from", None)
         if pretraining_path is not None:
             if not Path(pretraining_path).exists():
@@ -243,128 +209,6 @@ class S2TTransducerModel(BaseFairseqModel):
         jointnet_out = self.jointnet(encoder_out, decoder_out)
         return jointnet_out, encoder_out_lengths
 
-
-class SRTransformerEncoder(FairseqEncoder):
-    """Speech-to-text Transformer encoder that consists of input subsampler and
-    Transformer encoder."""
-
-    def __init__(self, args):
-        super().__init__(None)
-
-        self.encoder_freezing_updates = args.encoder_freezing_updates
-        self.num_updates = 0
-
-        self.dropout_module = FairseqDropout(
-            p=args.dropout, module_name=self.__class__.__name__
-        )
-        self.embed_scale = math.sqrt(args.encoder_embed_dim)
-        if args.no_scale_embedding:
-            self.embed_scale = 1.0
-        self.padding_idx = 1
-
-        self.subsample = Conv1dSubsampler(
-            args.input_feat_per_channel * args.input_channels,
-            args.conv_channels,
-            args.encoder_embed_dim,
-            [int(k) for k in args.conv_kernel_sizes.split(",")],
-        )
-
-        self.embed_positions = PositionalEmbedding(
-            args.max_source_positions, args.encoder_embed_dim, self.padding_idx
-        )
-
-        self.transformer_layers = nn.ModuleList(
-            [TransformerEncoderLayer(args) for _ in range(args.encoder_layers)]
-        )
-        if args.encoder_normalize_before:
-            self.layer_norm = LayerNorm(args.encoder_embed_dim)
-        else:
-            self.layer_norm = None
-
-    def _forward(self, src_tokens, src_lengths, return_all_hiddens=False):
-        x, input_lengths = self.subsample(src_tokens, src_lengths)
-        x = self.embed_scale * x
-
-        encoder_padding_mask = lengths_to_padding_mask(input_lengths)
-        positions = self.embed_positions(encoder_padding_mask).transpose(0, 1)
-        x += positions
-        x = self.dropout_module(x)
-
-        encoder_states = []
-
-        for layer in self.transformer_layers:
-            x = layer(x, encoder_padding_mask)
-            if return_all_hiddens:
-                encoder_states.append(x)
-
-        if self.layer_norm is not None:
-            x = self.layer_norm(x)
-
-        return {
-            "encoder_out": [x],  # T x B x C
-            "encoder_out_lengths": [input_lengths],
-            "encoder_padding_mask": [encoder_padding_mask]
-            if encoder_padding_mask.any()
-            else [],  # B x T
-            "encoder_embedding": [],  # B x T x C
-            "encoder_states": encoder_states,  # List[T x B x C]
-            "src_tokens": [],
-            "src_lengths": [],
-        }
-
-    def forward(self, src_tokens, src_lengths, return_all_hiddens=False):
-        if self.num_updates < self.encoder_freezing_updates:
-            with torch.no_grad():
-                x = self._forward(
-                    src_tokens, src_lengths, return_all_hiddens=return_all_hiddens
-                )
-        else:
-            x = self._forward(
-                src_tokens, src_lengths, return_all_hiddens=return_all_hiddens
-            )
-        return x
-
-    def reorder_encoder_out(self, encoder_out, new_order):
-        new_encoder_out = (
-            []
-            if len(encoder_out["encoder_out"]) == 0
-            else [x.index_select(1, new_order) for x in encoder_out["encoder_out"]]
-        )
-
-        new_encoder_padding_mask = (
-            []
-            if len(encoder_out["encoder_padding_mask"]) == 0
-            else [
-                x.index_select(0, new_order)
-                for x in encoder_out["encoder_padding_mask"]
-            ]
-        )
-
-        new_encoder_embedding = (
-            []
-            if len(encoder_out["encoder_embedding"]) == 0
-            else [
-                x.index_select(0, new_order) for x in encoder_out["encoder_embedding"]
-            ]
-        )
-
-        encoder_states = encoder_out["encoder_states"]
-        if len(encoder_states) > 0:
-            for idx, state in enumerate(encoder_states):
-                encoder_states[idx] = state.index_select(1, new_order)
-
-        return {
-            "encoder_out": new_encoder_out,  # T x B x C
-            "encoder_padding_mask": new_encoder_padding_mask,  # B x T
-            "encoder_embedding": new_encoder_embedding,  # B x T x C
-            "encoder_states": encoder_states,  # List[T x B x C]
-            "src_tokens": [],  # B x T
-            "src_lengths": [],  # B x 1
-        }
-
-    def set_num_updates(self, num_updates):
-        super().set_num_updates(num_updates)
-        self.num_updates = num_updates
 
 @with_incremental_state
 class TransducerLSTMDecoder(LSTMEncoder):
