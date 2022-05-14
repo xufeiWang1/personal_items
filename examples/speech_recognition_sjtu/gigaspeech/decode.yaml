@@ -6,7 +6,7 @@ common_eval:
 dataset:
   skip_invalid_size_inputs_valid_test: true
   max_tokens: 50000
-  gen_subset: dev
+  gen_subset: dev-tidy
 
 generation:
   _name: null

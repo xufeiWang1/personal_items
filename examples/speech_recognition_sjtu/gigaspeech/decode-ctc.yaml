@@ -1,13 +1,13 @@
 # @package _group_
 
 common_eval:
-  path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_nocmvn/checkpoint49.pt
-  # path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_nocmvn/avg5.pt
+  # path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug/checkpoint36.pt
+  path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug/avg10.pt
 
 dataset:
   skip_invalid_size_inputs_valid_test: true
   max_tokens: 50000
-  gen_subset: dev
+  gen_subset: dev-tidy
 
 generation:
   _name: null
