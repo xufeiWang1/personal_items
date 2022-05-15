@@ -1,8 +1,8 @@
 # @package _group_
 
 common_eval:
-  # path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug/checkpoint36.pt
-  path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug/avg10.pt
+  # path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug-lineardecay/checkpoint36.pt
+  path: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug-lineardecay/avg10.pt
 
 dataset:
   skip_invalid_size_inputs_valid_test: true

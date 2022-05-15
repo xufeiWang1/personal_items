@@ -254,9 +254,9 @@ def _main(cfg: DictConfig, output_file):
 
             if not cfg.common_eval.quiet:
                 if src_dict is not None:
-                    print("S-{}\t{}".format(sample_id, src_str), file=output_file)
+                    logger.info("S-{}\t{}".format(sample_id, src_str))
                 if has_target:
-                    print("T-{}\t{}".format(sample_id, target_str), file=output_file)
+                    logger.info("T-{}\t{}".format(sample_id, target_str))
 
             # Process top predictions
             for j, hypo in enumerate(hypos[i][: cfg.generation.nbest]):
@@ -278,17 +278,11 @@ def _main(cfg: DictConfig, output_file):
                     detok_hypo_str = detok_hypo_str.replace("<blank>", "")
 
                     # original hypothesis (after tokenization and BPE)
-                    print(
-                        "H-{}\t{}\t{}".format(sample_id, score, hypo_str),
-                        file=output_file,
-                    )
+                    logger.info("H-{}\t{}\t{}".format(sample_id, score, hypo_str))
                     # detokenized hypothesis
-                    print(
-                        "D-{}\t{}\t{}".format(sample_id, score, detok_hypo_str),
-                        file=output_file,
-                    )
+                    logger.info("D-{}\t{}\t{}".format(sample_id, score, detok_hypo_str))
                     if "positional_scores" in hypo:
-                        print(
+                        logger.info(
                             "P-{}\t{}".format(
                                 sample_id,
                                 " ".join(
@@ -300,12 +294,11 @@ def _main(cfg: DictConfig, output_file):
                                         .tolist(),
                                     )
                                 ),
-                            ),
-                            file=output_file,
+                            )
                         )
 
                     if cfg.generation.print_alignment == "hard":
-                        print(
+                        logger.info(
                             "A-{}\t{}".format(
                                 sample_id,
                                 " ".join(
@@ -314,25 +307,20 @@ def _main(cfg: DictConfig, output_file):
                                         for src_idx, tgt_idx in alignment
                                     ]
                                 ),
-                            ),
-                            file=output_file,
+                            )
                         )
                     if cfg.generation.print_alignment == "soft":
-                        print(
+                        logger.info(
                             "A-{}\t{}".format(
                                 sample_id,
                                 " ".join(
                                     [",".join(src_probs) for src_probs in alignment]
                                 ),
-                            ),
-                            file=output_file,
+                            )
                         )
 
                     if cfg.generation.print_step:
-                        print(
-                            "I-{}\t{}".format(sample_id, hypo["steps"]),
-                            file=output_file,
-                        )
+                        logger.info("I-{}\t{}".format(sample_id, hypo["steps"]))
 
                     if cfg.generation.retain_iter_history:
                         for step, h in enumerate(hypo["history"]):
@@ -344,10 +332,7 @@ def _main(cfg: DictConfig, output_file):
                                 tgt_dict=tgt_dict,
                                 remove_bpe=None,
                             )
-                            print(
-                                "E-{}_{}\t{}".format(sample_id, step, h_str),
-                                file=output_file,
-                            )
+                            logger.info("E-{}_{}\t{}".format(sample_id, step, h_str))
 
                 # Score only the top hypothesis
                 if has_target and j == 0:
@@ -394,11 +379,10 @@ def _main(cfg: DictConfig, output_file):
                     "If you are using BPE on the target side, the BLEU score is computed on BPE tokens, not on proper words.  Use --sacrebleu for standard 13a BLEU tokenization"
                 )
         # use print to be consistent with other main outputs: S-, H-, T-, D- and so on
-        print(
+        logger.info(
             "Generate {} with beam={}: {}".format(
                 cfg.dataset.gen_subset, cfg.generation.beam, scorer.result_string()
             ),
-            file=output_file,
         )
 
     return scorer

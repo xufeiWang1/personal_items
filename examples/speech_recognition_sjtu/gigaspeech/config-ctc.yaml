@@ -36,8 +36,9 @@ optimizer:
   # weight_decay: 0.01
 
 lr_scheduler:
-  _name: inverse_sqrt
-  warmup_updates: 25000
+  _name: linear_decay
+  # _name: inverse_sqrt
+  warmup_updates: 15000
 
 model:
   _name: sr_ctc
@@ -56,7 +57,7 @@ criterion:
   post_process: sentencepiece
 
 checkpoint:
-  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug-v2
+  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc.withspecaug-lineardecay
   save_interval_updates: 0
   keep_interval_updates: -1
   no_epoch_checkpoints: false
