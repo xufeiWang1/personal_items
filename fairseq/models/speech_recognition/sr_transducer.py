@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import logging
 import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -346,6 +346,76 @@ class TransducerLSTMDecoder(LSTMEncoder):
         # prev_cells = [prev_cells_[j] for j in range(self.num_layers)]
         return prev_hiddens_, prev_cells_
 
+
+    # used for greedy search
+    def initialize_cached_state(
+        self,
+        prev_output_tokens,
+        encoder_out: Optional[Dict[str, List[Tensor]]] = None,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+    ):
+        bsz = prev_output_tokens.size(0)
+        x = self.embed_tokens(prev_output_tokens)
+        zero_states = x.new_zeros(self.num_layers, bsz, self.hidden_size)
+        cache_state = torch.jit.annotate(
+            Dict[str, Optional[Tensor]],
+            {
+                "prev_hiddens": zero_states,
+                "prev_cells": zero_states,
+            },
+        )
+        self.set_incremental_state(incremental_state, "cached_state", cache_state)
+
+
+    def masked_copy_cached_state(
+        self,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
+        src_cached_state: Tuple[Optional[Union[List[torch.Tensor], torch.Tensor]]],
+        mask: Tensor,
+    ):
+        if (
+            incremental_state is None
+            or self._get_full_incremental_state_key("cached_state")
+            not in incremental_state
+        ):
+            assert src_cached_state is None or len(src_cached_state) == 0
+            return
+        prev_hiddens, prev_cells = self.get_cached_state(incremental_state)
+        src_prev_hiddens, src_prev_cells = (
+            src_cached_state[0],
+            src_cached_state[1],
+        )
+
+        def masked_copy_state(state: Optional[Tensor], src_state: Optional[Tensor]):
+            if state is None:
+                assert src_state is None
+                return None
+            else:
+                assert (
+                    state.size(0) == mask.size(0)
+                    and src_state is not None
+                    and state.size() == src_state.size()
+                )
+                state[mask, ...] = src_state[mask, ...]
+                return state
+
+        prev_hiddens = [
+            masked_copy_state(p, src_p)
+            for (p, src_p) in zip(prev_hiddens, src_prev_hiddens)
+        ]
+        prev_cells = [
+            masked_copy_state(p, src_p)
+            for (p, src_p) in zip(prev_cells, src_prev_cells)
+        ]
+
+        cached_state_new = torch.jit.annotate(
+            Dict[str, Optional[Tensor]],
+            {
+                "prev_hiddens": torch.stack(prev_hiddens),
+                "prev_cells": torch.stack(prev_cells),
+            },
+        )
+        self.set_incremental_state(incremental_state, "cached_state", cached_state_new)
 
 
 

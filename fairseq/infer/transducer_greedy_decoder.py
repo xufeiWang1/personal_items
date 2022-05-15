@@ -79,12 +79,13 @@ class TransducerGreedyDecoder(TransducerBaseDecoder):
     ):
         net_input = sample["net_input"]
         src_tokens = net_input["src_tokens"]
+        src_lengths = net_input["src_lengths"]
         bsz, src_len = src_tokens.size()[:2]
 
         # compute the encoder output
-        encoder_outs = self.model.encoder.forward_torchscript(net_input)
+        encoder_outs = self.model.encoder.forward(src_tokens, src_lengths)
         enc_out = encoder_outs["encoder_out"][0].transpose(0, 1)  # B x T x C
-        enc_out_lengths = encoder_outs["src_lengths"][0]  # B
+        enc_out_lengths = encoder_outs["encoder_out_lengths"][0]  # B
         max_enc_out_length = enc_out_lengths.max().item()
         max_len = (
             min(max_enc_out_length, self.max_len)
@@ -142,13 +143,13 @@ class TransducerGreedyDecoder(TransducerBaseDecoder):
                     0
                 ]  # B x 1 x H
                 logits = (
-                    self.model.joint(
+                    self.model.jointnet(
                         enc_out[:, step : step + 1, :], dec_out, apply_output_layer=True
                     )
                     .squeeze(2)
                     .squeeze(1)
                 )  # B x 1 x 1 x V -> B x V
-                lprobs = self.model.get_normalized_probs(
+                lprobs = self.model.jointnet.get_normalized_probs(
                     (logits.div_(self.temperature), None), log_probs=True
                 )  # B x V
 
