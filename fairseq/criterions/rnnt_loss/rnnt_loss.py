@@ -10,9 +10,11 @@ import torch
 from torch import Tensor
 from torch.utils.cpp_extension import load
 
+logger = logging.getLogger(__name__)
+
 build_dir = os.path.dirname(os.path.abspath(__file__)) + "/rnnt_loss_cpp"
 os.makedirs(build_dir, exist_ok=True)
-logging.info("Compiling C++ code to: {}".format(build_dir))
+logger.info("Compiling C++ code to: {}".format(build_dir))
 # logging.info(os.environ["INCLUDEPATH"])
 if "INCLUDEPATH" not in os.environ:
     os.environ["INCLUDEPATH"] = ''
@@ -23,7 +25,7 @@ transducer_loss = load(
     build_directory=build_dir,
     verbose=True
 )
-logging.info("successfully build rnnt_loss")
+logger.info("successfully build rnnt_loss")
 with open(build_dir + '/complete', 'w') as f:
     f.write("DONE")
 
