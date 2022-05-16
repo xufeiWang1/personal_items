@@ -49,8 +49,12 @@ class TransducerLossCriterion(FairseqCriterion):
         self.prev_num_updates = -1
 
     def forward(self, model, sample, reduce=True):
+        use_local_rnnt_loss = False
         try:
-            from torchaudio.functional import rnnt_loss
+            if use_local_rnnt_loss:
+                from .rnnt_loss.rnnt_loss import rnnt_loss
+            else:
+                from torchaudio.functional import rnnt_loss
         except ImportError:
             raise ImportError("Please install a newer torchaudio (version >= 0.10.0)")
 
