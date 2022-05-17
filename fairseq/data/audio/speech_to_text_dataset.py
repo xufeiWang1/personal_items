@@ -358,6 +358,9 @@ class SpeechToTextDataset(FairseqDataset):
     def num_tokens(self, index):
         return self.n_frames[index]
 
+    def num_tokens_labels(self, index):
+        return self.n_frames[index] * self.tgt_lens[index]
+
     def size(self, index):
         return self.n_frames[index], self.tgt_lens[index]
 
@@ -375,6 +378,7 @@ class SpeechToTextDataset(FairseqDataset):
         else:
             order = [np.arange(len(self))]
         # first by descending order of # of frames then by original/random order
+        order.append([-n for n in self.tgt_lens])
         order.append([-n for n in self.n_frames])
         return np.lexsort(order)
 

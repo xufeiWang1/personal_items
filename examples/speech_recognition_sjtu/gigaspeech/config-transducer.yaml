@@ -15,13 +15,13 @@ distributed_training:
 
 dataset:
   num_workers: 4
-  max_tokens: 20000
+  max_tokens: 25000
   skip_invalid_size_inputs_valid_test: true
   train_subset: train-m
   valid_subset: dev-tidy
   validate_interval: 1
   validate_interval_updates: 0
-  max_tokens_valid: 10000
+  max_tokens_valid: 20000
 
 optimization:
   max_update: 90000
@@ -64,6 +64,7 @@ model:
 criterion:
   _name: transducer_loss
   sentence_avg: true
+  use_local_rnnt_loss: true
 
 checkpoint:
   save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_transducer

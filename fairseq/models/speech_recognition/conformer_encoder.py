@@ -1,7 +1,7 @@
 import logging
 import torch
 
-from fairseq.models.speech_recognition.convsubsampler import Conv1dSubsampler
+from fairseq.models.speech_recognition.convsubsampler import Conv1dSubsampler, Pooling1DSubsampler
 from fairseq.models.speech_recognition.transformer_encoder import SRTransformerEncoder
 from fairseq.data.data_utils import lengths_to_padding_mask
 from fairseq.modules.conformer_layer import ConformerEncoderLayer
@@ -57,6 +57,8 @@ class SRConformerEncoder(FairseqEncoder):
             ]
         )
 
+        self.encoder_out_poollayer = Pooling1DSubsampler(2, 2, 0)
+
     def forward(self, src_tokens, src_lengths, return_all_hiddens=False):
         """
         Args:
@@ -94,6 +96,9 @@ class SRConformerEncoder(FairseqEncoder):
             x, _ = layer(x, encoder_padding_mask, positions)
             if return_all_hiddens:
                 encoder_states.append(x)
+
+        if True:
+            x, input_lengths = self.encoder_out_poollayer(x, input_lengths)
 
         return {
             "encoder_out": [x],  # T x B x C

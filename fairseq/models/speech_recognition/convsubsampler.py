@@ -2,6 +2,38 @@ import torch
 import torch.nn as nn
 from typing import Dict, List, Optional, Tuple
 
+class Pooling1DSubsampler(nn.Module):
+    def __init__(self,
+                 kernel_size: int = 2,
+                 stride: int = 2,
+                 padding: int = 0,
+                 poolingtype: str="average"):
+        super(Pooling1DSubsampler, self).__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.poolingtype = poolingtype
+        if poolingtype == "average":
+            self.poolinglayer = nn.AvgPool1d(kernel_size, stride, padding)
+        elif poolingtype == "max":
+            self.poolinglayer = nn.MaxPool1d(kernel_size, stride, padding)
+
+
+    def forward(self, x, x_lengths):
+        # encoder output dim: T x B x C
+        x = x.transpose(0, 2)
+        out = self.poolinglayer(x)
+        out = out.transpose(0, 2)
+        out_lengths = self.get_out_seq_lens_tensor(x_lengths)
+        return out, out_lengths
+
+    def get_out_seq_lens_tensor(self, in_seq_lens_tensor):
+        out = in_seq_lens_tensor.clone()
+        out = ((out.float() + 2*self.padding - self.kernel_size) / self.stride + 1).floor().long()
+        return out
+
+
+
 class Conv1dSubsampler(nn.Module):
     """Convolutional subsampler: a stack of 1D convolution (along temporal
     dimension) followed by non-linear activation via gated linear units

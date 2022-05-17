@@ -27,6 +27,10 @@ cpdef list batch_by_size_vec(
     if indices.shape[0] == 0:
         return []
 
+    # add by xie chen to ensure max_tokens always larger than the largest sentence tokens
+    if np.max(num_tokens_vec) >= max_tokens:
+        max_tokens = np.max(num_tokens_vec) + 1
+
     assert max_tokens <= 0 or np.max(num_tokens_vec) <= max_tokens, (
         f"Sentences lengths should not exceed max_tokens={max_tokens}"
     )

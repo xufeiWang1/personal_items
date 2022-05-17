@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TransducerLossCriterionConfig(FairseqDataclass):
     sentence_avg: bool = II("optimization.sentence_avg")
+    use_local_rnnt_loss: bool = II("use rnnt loss built locally with JIT or from torchaudio")
     print_training_sample_interval: int = field(
         default=500,
         metadata={
@@ -47,11 +48,11 @@ class TransducerLossCriterion(FairseqCriterion):
         self.print_interval = cfg.print_training_sample_interval
         self.dictionary = task.target_dictionary
         self.prev_num_updates = -1
+        self.use_local_rnnt_loss = cfg.use_local_rnnt_loss
 
     def forward(self, model, sample, reduce=True):
-        use_local_rnnt_loss = False
         try:
-            if use_local_rnnt_loss:
+            if self.use_local_rnnt_loss:
                 from .rnnt_loss.rnnt_loss import rnnt_loss
             else:
                 from torchaudio.functional import rnnt_loss
