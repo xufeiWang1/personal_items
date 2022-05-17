@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TransducerLossCriterionConfig(FairseqDataclass):
     sentence_avg: bool = II("optimization.sentence_avg")
-    use_local_rnnt_loss: bool = II("use rnnt loss built locally with JIT or from torchaudio")
+    use_local_rnnt_loss: bool = False
     print_training_sample_interval: int = field(
         default=500,
         metadata={

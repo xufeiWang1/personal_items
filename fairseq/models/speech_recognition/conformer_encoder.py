@@ -57,7 +57,10 @@ class SRConformerEncoder(FairseqEncoder):
             ]
         )
 
-        self.encoder_out_poollayer = Pooling1DSubsampler(2, 2, 0)
+        # self.encoder_out_poollayer = Pooling1DSubsampler(3, 3, 0)
+        self.use_encoder_output_subsampler = args.use_encoder_output_subsampler
+        if self.use_encoder_output_subsampler:
+            self.encoder_out_poollayer = Pooling1DSubsampler(args.pool_kernel_size, args.pool_stride_size, args.pool_padding_size)
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens=False):
         """
@@ -97,7 +100,7 @@ class SRConformerEncoder(FairseqEncoder):
             if return_all_hiddens:
                 encoder_states.append(x)
 
-        if True:
+        if self.use_encoder_output_subsampler:
             x, input_lengths = self.encoder_out_poollayer(x, input_lengths)
 
         return {
