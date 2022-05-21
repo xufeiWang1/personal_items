@@ -33,6 +33,33 @@ class Pooling1DSubsampler(nn.Module):
         return out
 
 
+class SuperFrame(torch.nn.Module):
+    def __init__(self, odim):
+        super(SuperFrame, self).__init__()
+        # superframe: concatenates 8 succeeding frames, dim: 8 * 80 = 640
+        # frame shift: 30ms
+        idim = 640
+        self.proj = torch.nn.Linear(idim, odim)
+
+    def forward(self, src_tokens, src_lengths):
+        n_frames = (src_tokens.size(1) // 3) * 3
+        out_lengths = src_lengths // 3 - 2
+
+        x = src_tokens[:, :n_frames, :]
+        _1 = x[:, ::3, :]
+        _2 = x[:, 1::3, :]
+        _3 = x[:, 2::3, :]
+        x = torch.cat((_1, _2, _3), dim=-1)
+
+        _1 = x[:, 0:-2, :]
+        _2 = x[:, 1:-1, :]
+        _3 = x[:, 2:, :]
+        x = torch.cat((_1, _2, _3), dim=-1)
+        x = x[:, :, 0:x.size(-1)-80]
+        x = x.transpose(0, 1)
+        x_out = self.proj(x)
+        return x_out, out_lengths
+
 
 class Conv1dSubsampler(nn.Module):
     """Convolutional subsampler: a stack of 1D convolution (along temporal

@@ -1,7 +1,7 @@
 import logging
 import torch
 
-from fairseq.models.speech_recognition.convsubsampler import Conv1dSubsampler, Pooling1DSubsampler
+from fairseq.models.speech_recognition.convsubsampler import Conv1dSubsampler, Pooling1DSubsampler, SuperFrame
 from fairseq.models.speech_recognition.transformer_encoder import SRTransformerEncoder
 from fairseq.data.data_utils import lengths_to_padding_mask
 from fairseq.modules.conformer_layer import ConformerEncoderLayer
@@ -20,12 +20,17 @@ class SRConformerEncoder(FairseqEncoder):
         if args.no_scale_embedding:
             self.embed_scale = 1.0
         self.padding_idx = 1
-        self.subsample = Conv1dSubsampler(
-            args.input_feat_per_channel * args.input_channels,
-            args.conv_channels,
-            args.encoder_embed_dim,
-            [int(k) for k in args.conv_kernel_sizes.split(",")],
-        )
+
+        if args.subsample_type == "superframe":
+            self.subsample = SuperFrame(args.encoder_embed_dim)
+        else:
+            self.subsample = Conv1dSubsampler(
+                args.input_feat_per_channel * args.input_channels,
+                args.conv_channels,
+                args.encoder_embed_dim,
+                [int(k) for k in args.conv_kernel_sizes.split(",")],
+            )
+
         self.pos_enc_type = args.pos_enc_type
         if self.pos_enc_type == "rel_pos":
             self.embed_positions = RelPositionalEncoding(
@@ -77,6 +82,7 @@ class SRConformerEncoder(FairseqEncoder):
             src_lengths: Optional Tensor. Always empty here
         """
         x, input_lengths = self.subsample(src_tokens, src_lengths)  # returns T X B X C
+
         encoder_padding_mask = lengths_to_padding_mask(input_lengths)
         x = self.embed_scale * x
         if self.pos_enc_type == "rel_pos":
@@ -102,6 +108,10 @@ class SRConformerEncoder(FairseqEncoder):
 
         if self.use_encoder_output_subsampler:
             x, input_lengths = self.encoder_out_poollayer(x, input_lengths)
+
+        # x = x[1::2, :, :]
+        # input_lengths = input_lengths // 2
+        # encoder_padding_mask = lengths_to_padding_mask(input_lengths)
 
         return {
             "encoder_out": [x],  # T x B x C
