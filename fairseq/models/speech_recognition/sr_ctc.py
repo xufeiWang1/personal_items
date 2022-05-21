@@ -46,6 +46,14 @@ class SRCTCConfig(FairseqDataclass):
     input_feat_per_channel: int = 80
     input_channels: int = 1
 
+    #### encoder output pooling layer config
+    use_encoder_output_subsampler: bool = False
+    pool_kernel_size: int = 2
+    pool_stride_size: int = 2
+    pool_padding_size: int = 0
+    # conv2d or superframe
+    subsample_type: str = "conv2d"
+
     #### encoder config
     encoder_type: str = "transformer"
     encoder_embed_dim: int = 256

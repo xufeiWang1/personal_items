@@ -40,6 +40,8 @@ class SuperFrame(torch.nn.Module):
         # frame shift: 30ms
         idim = 640
         self.proj = torch.nn.Linear(idim, odim)
+        nn.init.xavier_normal_(self.proj.weight)
+        nn.init.zeros_(self.proj.bias)
 
     def forward(self, src_tokens, src_lengths):
         n_frames = (src_tokens.size(1) // 3) * 3
@@ -58,6 +60,7 @@ class SuperFrame(torch.nn.Module):
         x = x[:, :, 0:x.size(-1)-80]
         x = x.transpose(0, 1)
         x_out = self.proj(x)
+        x = nn.functional.glu(x, dim=1)
         return x_out, out_lengths
 
 
