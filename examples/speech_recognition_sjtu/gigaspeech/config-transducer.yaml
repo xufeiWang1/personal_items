@@ -29,7 +29,7 @@ optimization:
   clip_norm: 5.0
   sentence_avg: false
   # update_freq: [8]
-  update_freq: [1]
+  update_freq: [5]
   lr: [0.0005]
 
 optimizer:
@@ -71,7 +71,7 @@ model:
 criterion:
   _name: transducer_loss
   sentence_avg: true
-  use_local_rnnt_loss: true
+  use_local_rnnt_loss: false
 
 checkpoint:
   save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_transducer

@@ -33,7 +33,7 @@ class Pooling1DSubsampler(nn.Module):
         return out
 
 
-class SuperFrame(torch.nn.Module):
+class SuperFrame(nn.Module):
     def __init__(self, odim):
         super(SuperFrame, self).__init__()
         # superframe: concatenates 8 succeeding frames, dim: 8 * 80 = 640
@@ -60,7 +60,7 @@ class SuperFrame(torch.nn.Module):
         x = x[:, :, 0:x.size(-1)-80]
         x = x.transpose(0, 1)
         x_out = self.proj(x)
-        x = nn.functional.glu(x, dim=1)
+        x_out = nn.functional.glu(x_out, dim=1)
         return x_out, out_lengths
 
 
