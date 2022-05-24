@@ -75,6 +75,7 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > compute(
       targets.size(1) == at::max(target_lengths).item().toInt(),
       "target length mismatch");
 
+
   Options options;
   options.batchSize_ = logit_lengths.size(0);
   options.nHypos_ = target_lengths.size(0) / logit_lengths.size(0);
@@ -105,6 +106,7 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > compute(
       torch::TensorOptions()
           .device(logits.device())
           .dtype(torch::ScalarType::Float));
+
 
   Workspace<float> workspace(
       /*options=*/options,

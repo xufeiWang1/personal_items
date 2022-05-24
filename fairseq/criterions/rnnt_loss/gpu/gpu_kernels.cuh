@@ -47,17 +47,32 @@ __global__ void ComputeLogProbs(
 
   int idx = indexer(bTgt, t, u);
 
+  long int index_element = idx;
+  index_element = index_element * D + blank;
+
   // skip: log_prob(b, t, u).skip() = logits(b, t, u, blank) - denom(b, t, u).
+#if 0
   logProbs[(idx << 1) + LOG_PROBS_SKIP_IDX] =
       CAST_DTYPE(logits[idx * D + blank]) - denominators[idx];
+#else
+  logProbs[(idx << 1) + LOG_PROBS_SKIP_IDX] =
+      CAST_DTYPE(logits[index_element]) - denominators[idx];
+#endif
 
   if (u < U - 1)
   {
     // emit: log_prob(b, t, u).emit() = logits(b, t, u, tgt[u]) - denom(b, t,
     // u).
     int target = targets[Indexer2D(maxU - 1)(bTgt, u)];
+    index_element = idx;
+    index_element = index_element * D + target;
+#if 0
     logProbs[(idx << 1) + LOG_PROBS_EMIT_IDX] =
         CAST_DTYPE(logits[idx * D + target]) - denominators[idx];
+#else
+    logProbs[(idx << 1) + LOG_PROBS_EMIT_IDX] =
+        CAST_DTYPE(logits[index_element]) - denominators[idx];
+#endif
   }
 }
 

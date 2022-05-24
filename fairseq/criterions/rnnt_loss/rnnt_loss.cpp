@@ -59,6 +59,7 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > rnnt_loss_autograd(
   at::AutoDispatchBelowADInplaceOrView guard;
   auto results = RNNTLossFunction::apply(
       logits, targets, logit_lengths, target_lengths, blank, clamp);
+
   return std::make_tuple(results[0], results[1]);
 }
 

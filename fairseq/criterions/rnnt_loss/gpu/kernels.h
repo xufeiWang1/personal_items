@@ -45,8 +45,8 @@ HOST_AND_DEVICE void ComputeGradientsElement(
       int idx_b_t_u_zero = idxr3(bTgt, t, u);
       if (idx_b_t_u_zero != -1)
       {
-        int start = idx_b_t_u_zero * D;
-        for (int b_t_u_d = start; b_t_u_d < start + D; ++b_t_u_d)
+        long int start = (long int)idx_b_t_u_zero * D;
+        for (long int b_t_u_d = start; b_t_u_d < start + D; ++b_t_u_d)
         {
           gradients[b_t_u_d] = 0;
         }
@@ -75,7 +75,7 @@ HOST_AND_DEVICE void ComputeGradientsElement(
   {
     for (int d = 0; d < D; ++d)
     {
-      int b_t_u_d = idx_b_t_u * D + d;
+      long int b_t_u_d = (long int)idx_b_t_u * D + d;
       gradients[b_t_u_d] = 0;
     }
     return;
@@ -84,7 +84,7 @@ HOST_AND_DEVICE void ComputeGradientsElement(
   CAST_DTYPE c = alphas[idx_b_t_u] + cost - denominators[idx_b_t_u];
   for (int d = 0; d < D; ++d)
   {
-    int b_t_u_d = idx_b_t_u * D + d;
+    long int b_t_u_d = (long int)idx_b_t_u * D + d;
     CAST_DTYPE g = CAST_DTYPE(logits[b_t_u_d]) + c;
 
     if (d == blank && t == T - 1 && u == U - 1)

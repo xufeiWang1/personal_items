@@ -94,6 +94,8 @@ class TransducerLossCriterion(FairseqCriterion):
             reduction=("sum" if reduce else "none"),
         )
 
+        # torch.cuda.empty_cache()
+
         ntokens = (
             sample["ntokens"] if "ntokens" in sample else target_lengths.sum().item()
         )

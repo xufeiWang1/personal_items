@@ -42,11 +42,17 @@ status_t LogSumExp2D(
     CAST_DTYPE* outputs)
 {
   { // compute max among D.
+#if 0
+    int REDUCE_BLOCKS = 65535;
+    dim3 block_dims(REDUCE_BLOCKS);
+#else
     dim3 block_dims(N);
+#endif
     dim3 thread_dims(REDUCE_THREADS);
 
     ReduceMax2D<REDUCE_THREADS, DTYPE, CAST_DTYPE>
         <<<block_dims, thread_dims, 0, stream>>>(
+            /*N=*/N,    
             /*dim=*/D,
             /*inputs=*/logits,
             /*outputs=*/outputs);
@@ -60,11 +66,17 @@ status_t LogSumExp2D(
   }
 
   { // compute log(sum(exp(d_i - max)))
+#if 0
+    int REDUCE_BLOCKS = 65535;
+    dim3 block_dims(REDUCE_BLOCKS);
+#else
     dim3 block_dims(N);
+#endif
     dim3 thread_dims(REDUCE_THREADS);
 
     ReduceLogSumExpGivenMax2D<REDUCE_THREADS, DTYPE, CAST_DTYPE>
         <<<block_dims, thread_dims, 0, stream>>>(
+            /*N=*/N,
             /*dim=*/D,
             /*inputs=*/logits,
             /*outputs=*/outputs);
@@ -91,7 +103,7 @@ status_t LogSumExp2D(
 template <typename DTYPE, typename CAST_DTYPE>
 status_t Compute(
     const Workspace<CAST_DTYPE>& workspace,
-    const DTYPE* logits,
+    DTYPE* logits,
     const int* targets,
     const int* srcLengths,
     const int* tgtLengths,
@@ -108,6 +120,7 @@ status_t Compute(
   const int& D = options.numTargets_;
   const int& blank = options.blank_;
   const CAST_DTYPE clamp = options.clamp_;
+
 
   { // compute denominators.
     status_t status = LogSumExp2D<DTYPE, CAST_DTYPE>(
@@ -183,6 +196,7 @@ status_t Compute(
       return COMPUTE_ALPHAS_BETAS_COSTS_FAILED;
     }
   }
+  // return SUCCESS;
 
   if (gradients != nullptr)
   { // compute gradients.
