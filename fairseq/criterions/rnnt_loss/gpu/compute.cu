@@ -14,7 +14,8 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > compute(
     const torch::Tensor& logit_lengths,
     const torch::Tensor& target_lengths,
     int64_t blank,
-    double clamp) {
+    double clamp)
+{
   TORCH_CHECK(
       logits.device().type() == targets.device().type(),
       "logits and targets must be on the same device");
@@ -112,32 +113,36 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > compute(
       /*int_data=*/int_workspace.data_ptr<int>(),
       /*int_size=*/int_workspace.numel());
 
-  switch (logits.scalar_type()) {
-    case torch::ScalarType::Float: {
-      Compute</*DTYPE=*/float, /*CAST_DTYPE=*/float>(
-          /*workspace=*/workspace,
-          /*logits=*/logits.data_ptr<float>(),
-          /*targets=*/targets.data_ptr<int>(),
-          /*logit_lengths=*/logit_lengths.data_ptr<int>(),
-          /*target_lengths=*/target_lengths.data_ptr<int>(),
-          /*costs=*/costs.data_ptr<float>(),
-          /*gradients=*/logits.data_ptr<float>());
-      break;
-    }
-    case torch::ScalarType::Half: {
-      Compute</*DTYPE=*/c10::Half, /*CAST_DTYPE=*/float>(
-          /*workspace=*/workspace,
-          /*logits=*/logits.data_ptr<c10::Half>(),
-          /*targets=*/targets.data_ptr<int>(),
-          /*logit_lengths=*/logit_lengths.data_ptr<int>(),
-          /*target_lengths=*/target_lengths.data_ptr<int>(),
-          /*costs=*/costs.data_ptr<c10::Half>(),
-          /*gradients=*/logits.data_ptr<c10::Half>());
-      break;
-    }
-    default: {
-      break;
-    }
+  switch (logits.scalar_type())
+  {
+    case torch::ScalarType::Float:
+        {
+            Compute</*DTYPE=*/float, /*CAST_DTYPE=*/float>(
+                    /*workspace=*/workspace,
+                    /*logits=*/logits.data_ptr<float>(),
+                    /*targets=*/targets.data_ptr<int>(),
+                    /*logit_lengths=*/logit_lengths.data_ptr<int>(),
+                    /*target_lengths=*/target_lengths.data_ptr<int>(),
+                    /*costs=*/costs.data_ptr<float>(),
+                    /*gradients=*/logits.data_ptr<float>());
+            break;
+        }
+    case torch::ScalarType::Half:
+        {
+            Compute</*DTYPE=*/c10::Half, /*CAST_DTYPE=*/float>(
+                    /*workspace=*/workspace,
+                    /*logits=*/logits.data_ptr<c10::Half>(),
+                    /*targets=*/targets.data_ptr<int>(),
+                    /*logit_lengths=*/logit_lengths.data_ptr<int>(),
+                    /*target_lengths=*/target_lengths.data_ptr<int>(),
+                    /*costs=*/costs.data_ptr<c10::Half>(),
+                    /*gradients=*/logits.data_ptr<c10::Half>());
+            break;
+        }
+    default:
+        {
+            break;
+        }
   };
 
   return std::make_tuple(costs, logits);

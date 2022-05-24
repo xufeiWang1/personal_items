@@ -18,8 +18,10 @@ inline void gpuAssert(
     cudaError_t code,
     const char* file,
     int line,
-    bool abort = true) {
-  if (code != cudaSuccess) {
+    bool abort = true)
+{
+  if (code != cudaSuccess)
+  {
     fprintf(
         stderr,
         "\nGPUassert: %s %s %d\n",
@@ -37,7 +39,8 @@ status_t LogSumExp2D(
     int N,
     int D,
     const DTYPE* logits, // [N, D]
-    CAST_DTYPE* outputs) {
+    CAST_DTYPE* outputs)
+{
   { // compute max among D.
     dim3 block_dims(N);
     dim3 thread_dims(REDUCE_THREADS);
@@ -50,7 +53,8 @@ status_t LogSumExp2D(
 
     // BUGBUG: These error codes are only accurate when launching with
     // blocking. Otherwise they usually reflect earlier errors.
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_DENOMINATOR_REDUCE_MAX_FAILED;
     }
   }
@@ -65,7 +69,8 @@ status_t LogSumExp2D(
             /*inputs=*/logits,
             /*outputs=*/outputs);
 
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_DENOMINATOR_REDUCE_SUM_FAILED;
     }
   }
@@ -91,7 +96,8 @@ status_t Compute(
     const int* srcLengths,
     const int* tgtLengths,
     DTYPE* costs,
-    DTYPE* gradients = nullptr) {
+    DTYPE* gradients = nullptr)
+{
   const Options& options = workspace.GetOptions();
 
   const cudaStream_t& stream = options.stream_;
@@ -111,7 +117,8 @@ status_t Compute(
         /*logits=*/logits,
         /*denominators=*/workspace.GetPointerToDenominators());
 
-    if (status != SUCCESS) {
+    if (status != SUCCESS)
+    {
       return status;
     }
   }
@@ -135,7 +142,8 @@ status_t Compute(
         /*log_probs=*/workspace.GetPointerToLogProbs(),
         H);
 
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_LOG_PROBS_FAILED;
     }
   }
@@ -170,12 +178,14 @@ status_t Compute(
             /*warp_size=*/WARP_SIZE,
             /*num_warps=*/num_warps,
             H);
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_ALPHAS_BETAS_COSTS_FAILED;
     }
   }
 
-  if (gradients != nullptr) { // compute gradients.
+  if (gradients != nullptr)
+  { // compute gradients.
     // don't set gradients to zero to here as gradients might reuse memory from
     // logits
 
@@ -199,7 +209,8 @@ status_t Compute(
         /*betas=*/workspace.GetPointerToBetas(),
         /*gradients=*/gradients,
         H);
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_GRADIENTS_FAILED;
     }
   }
@@ -233,7 +244,8 @@ status_t ComputeAlphas(
         /*logits=*/logits,
         /*denominators=*/workspace.GetPointerToDenominators());
 
-    if (status != SUCCESS) {
+    if (status != SUCCESS)
+    {
       return status;
     }
   }
@@ -257,7 +269,8 @@ status_t ComputeAlphas(
         /*log_probs=*/workspace.GetPointerToLogProbs(),
         H);
 
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_LOG_PROBS_FAILED;
     }
   }
@@ -287,7 +300,8 @@ status_t ComputeAlphas(
             /*alphas=*/(volatile DTYPE*)alphas,
             H);
 
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_ALPHAS_BETAS_COSTS_FAILED;
     }
   }
@@ -322,7 +336,8 @@ status_t ComputeBetas(
         /*logits=*/logits,
         /*denominators=*/workspace.GetPointerToDenominators());
 
-    if (status != SUCCESS) {
+    if (status != SUCCESS)
+    {
       return status;
     }
   }
@@ -346,7 +361,8 @@ status_t ComputeBetas(
         /*log_probs=*/workspace.GetPointerToLogProbs(),
         H);
 
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_LOG_PROBS_FAILED;
     }
   }
@@ -377,7 +393,8 @@ status_t ComputeBetas(
             costs,
             H);
 
-    if (cudaGetLastError() != cudaSuccess) {
+    if (cudaGetLastError() != cudaSuccess)
+    {
       return COMPUTE_ALPHAS_BETAS_COSTS_FAILED;
     }
   }

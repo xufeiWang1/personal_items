@@ -13,7 +13,8 @@
 namespace torchaudio {
 namespace rnnt {
 
-typedef struct Options {
+typedef struct Options 
+{
   // the device to compute transducer loss.
   device_t device_;
 #ifdef USE_CUDA
@@ -55,15 +56,18 @@ typedef struct Options {
         maxTgtLen_(0),
         numTargets_(0) {}
 
-  int BU() const {
+  int BU() const
+  {
     return batchSize_ * maxTgtLen_ * nHypos_;
   }
 
-  int BTU() const {
+  int BTU() const
+  {
     return batchSize_ * maxSrcLen_ * maxTgtLen_ * nHypos_;
   }
 
-  friend std::ostream& operator<<(std::ostream& os, const Options& options) {
+  friend std::ostream& operator<<(std::ostream& os, const Options& options)
+  {
     os << "Options("
        << "batchSize_=" << options.batchSize_ << ", "
        << "maxSrcLen_=" << options.maxSrcLen_ << ", "

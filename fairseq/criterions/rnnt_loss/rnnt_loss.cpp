@@ -15,7 +15,8 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > compute(
     int64_t blank,
     double clamp);
 
-class RNNTLossFunction : public torch::autograd::Function<RNNTLossFunction> {
+class RNNTLossFunction : public torch::autograd::Function<RNNTLossFunction>
+{
  public:
   static torch::autograd::tensor_list forward(
       torch::autograd::AutogradContext* ctx,
@@ -24,10 +25,10 @@ class RNNTLossFunction : public torch::autograd::Function<RNNTLossFunction> {
       const torch::Tensor& logit_lengths,
       const torch::Tensor& target_lengths,
       int64_t blank,
-      double clamp) {
+      double clamp)
+  {
     torch::Tensor undef;
-    auto result =
-        compute(logits, targets, logit_lengths, target_lengths, blank, clamp);
+    auto result = compute(logits, targets, logit_lengths, target_lengths, blank, clamp);
     auto costs = std::get<0>(result);
     auto grads = std::get<1>(result).value_or(undef);
     ctx->save_for_backward({grads});
@@ -36,7 +37,8 @@ class RNNTLossFunction : public torch::autograd::Function<RNNTLossFunction> {
 
   static torch::autograd::tensor_list backward(
       torch::autograd::AutogradContext* ctx,
-      torch::autograd::tensor_list grad_outputs) {
+      torch::autograd::tensor_list grad_outputs)
+  {
     auto saved = ctx->get_saved_variables();
     auto grad = saved[0];
     auto grad_out = grad_outputs[0].view({-1, 1, 1, 1});
@@ -61,7 +63,8 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > rnnt_loss_autograd(
 }
 
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
     m.def("rnnt_loss", &rnnt_loss_autograd, "rnnt loss computation, for gpu only");
 }
 

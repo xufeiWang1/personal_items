@@ -9,27 +9,33 @@
 namespace torchaudio {
 namespace rnnt {
 
-struct alignas(sizeof(__half)) Half {
+struct alignas(sizeof(__half)) Half
+{
   __half x;
 
   HOST_AND_DEVICE Half() = default;
 
-  FORCE_INLINE HOST_AND_DEVICE Half(float f) {
+  FORCE_INLINE HOST_AND_DEVICE Half(float f) 
+  {
     x = __float2half_rn(f);
-    if (isinf(__half2float(x))) {
+    if (isinf(__half2float(x)))
+    {
       x = __float2half_rz(f); // round toward 0.
     }
   }
 
-  FORCE_INLINE HOST_AND_DEVICE operator float() const {
+  FORCE_INLINE HOST_AND_DEVICE operator float() const 
+  {
     return __half2float(x);
   }
 
-  FORCE_INLINE HOST_AND_DEVICE Half(__half f) {
+  FORCE_INLINE HOST_AND_DEVICE Half(__half f)
+  {
     x = f;
   }
 
-  FORCE_INLINE HOST_AND_DEVICE operator __half() const {
+  FORCE_INLINE HOST_AND_DEVICE operator __half() const 
+  {
     return x;
   }
 };

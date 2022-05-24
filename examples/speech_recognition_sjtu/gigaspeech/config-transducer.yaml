@@ -71,7 +71,7 @@ model:
 criterion:
   _name: transducer_loss
   sentence_avg: true
-  use_local_rnnt_loss: false
+  use_local_rnnt_loss: true
 
 checkpoint:
   save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_transducer

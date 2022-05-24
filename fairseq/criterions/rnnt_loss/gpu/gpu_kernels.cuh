@@ -24,7 +24,8 @@ __global__ void ComputeLogProbs(
     const int* tgtLengths,
     const CAST_DTYPE* denominators,
     CAST_DTYPE* logProbs,
-    int H = 1) {
+    int H = 1)
+{
   const int& maxT = maxSrcLen;
   const int& maxU = maxTgtLen;
   const int& D = numTargets;
@@ -37,7 +38,8 @@ __global__ void ComputeLogProbs(
   const int t = blockIdx.x * blockDim.x + threadIdx.x;
   const int u = blockIdx.y;
 
-  if (t >= T || u >= U) { // out of boundary.
+  if (t >= T || u >= U)
+  { // out of boundary.
     return;
   }
 
@@ -49,7 +51,8 @@ __global__ void ComputeLogProbs(
   logProbs[(idx << 1) + LOG_PROBS_SKIP_IDX] =
       CAST_DTYPE(logits[idx * D + blank]) - denominators[idx];
 
-  if (u < U - 1) {
+  if (u < U - 1)
+  {
     // emit: log_prob(b, t, u).emit() = logits(b, t, u, tgt[u]) - denom(b, t,
     // u).
     int target = targets[Indexer2D(maxU - 1)(bTgt, u)];
@@ -69,7 +72,8 @@ __device__ void ComputeAlphas(
     const int* tgtLengths,
     int* alpha_counters,
     volatile CAST_DTYPE* alphas,
-    int H = 1) {
+    int H = 1)
+{
   const int& maxT = maxSrcLen;
   const int& maxU = maxTgtLen;
 
@@ -81,7 +85,8 @@ __device__ void ComputeAlphas(
   const int t = blockIdx.x * blockDim.x + threadIdx.x + 1;
   const int u = blockIdx.y + 1;
 
-  if (t >= T || u >= U) { // out of boundary.
+  if (t >= T || u >= U)
+  { // out of boundary.
     return;
   }
 
@@ -89,35 +94,44 @@ __device__ void ComputeAlphas(
 
   Indexer3D idxr(maxT, maxU);
 
-  if (t == 1 && u == 1) {
+  if (t == 1 && u == 1)
+  {
     alphas[idxr(bTgt, 0, 0)] = 0;
   }
 
-  if (blockIdx.x > 0) { // wait for previous warp (in t-axis) is ready.
-    while (atomicAdd(counter, 0) < blockIdx.x) {
+  if (blockIdx.x > 0)
+  { // wait for previous warp (in t-axis) is ready.
+    while (atomicAdd(counter, 0) < blockIdx.x)
+    {
     }
   }
 
-  if (blockIdx.y > 0) { // wait for previous warp (in u-axis) is ready.
-    while (atomicAdd(counter - 1, 0) <= blockIdx.x) {
+  if (blockIdx.y > 0)
+  { // wait for previous warp (in u-axis) is ready.
+    while (atomicAdd(counter - 1, 0) <= blockIdx.x)
+    {
     }
   }
 
-  if (t == 1 && u < U) {
+  if (t == 1 && u < U)
+  {
     // alpha(0, u) = alpha(0, u - 1) + logProbs(0, u - 1).emit().
     alphas[idxr(bTgt, 0, u)] = alphas[idxr(bTgt, 0, u - 1)] +
         logProbs[(idxr(bTgt, 0, u - 1) << 1) + LOG_PROBS_EMIT_IDX];
   }
 
-  if (blockIdx.y == 0 && t < T) {
+  if (blockIdx.y == 0 && t < T)
+  {
     CAST_DTYPE skip_prob =
         logProbs[(idxr(bTgt, t - 1, 0) << 1) + LOG_PROBS_SKIP_IDX];
     CAST_DTYPE val;
 
 #pragma unroll
-    for (int i = 1; i < warpSize; i <<= 1) {
+    for (int i = 1; i < warpSize; i <<= 1)
+    {
       val = __shfl_up_sync(0xffffffff, skip_prob, i);
-      if (i <= threadIdx.x) {
+      if (i <= threadIdx.x)
+      {
         skip_prob = skip_prob + val;
       }
     }
@@ -126,7 +140,8 @@ __device__ void ComputeAlphas(
     alphas[idxr(bTgt, t, 0)] = skip_prob + val;
   }
 
-  if (t < T && u < U) {
+  if (t < T && u < U)
+  {
     CAST_DTYPE skip_prob =
         logProbs[(idxr(bTgt, t - 1, u) << 1) + LOG_PROBS_SKIP_IDX];
     CAST_DTYPE emit_prob =
@@ -139,9 +154,11 @@ __device__ void ComputeAlphas(
     CAST_DTYPE val = math::lse(skip, emit);
     CAST_DTYPE out = val;
 
-    for (int i = 1; i < warpSize; ++i) {
+    for (int i = 1; i < warpSize; ++i)
+    {
       val = __shfl_up_sync(0xffffffff, val, 1);
-      if (i == threadIdx.x) {
+      if (i == threadIdx.x)
+      {
         val = math::lse(val + skip_prob, emit);
         out = val;
       }
@@ -150,7 +167,8 @@ __device__ void ComputeAlphas(
     alphas[idxr(bTgt, t, u)] = out;
   }
 
-  if (threadIdx.x == 0) {
+  if (threadIdx.x == 0)
+  {
     __threadfence();
     atomicAdd(counter, 1);
   }
@@ -168,7 +186,8 @@ __device__ void ComputeBetasCosts(
     int* betaCounters,
     volatile CAST_DTYPE* betas,
     DTYPE* costs,
-    int H = 1) {
+    int H = 1)
+{
   const int& maxT = maxSrcLen;
   const int& maxU = maxTgtLen;
 
@@ -180,7 +199,8 @@ __device__ void ComputeBetasCosts(
   const int t = T - 2 - blockIdx.x * blockDim.x - threadIdx.x;
   const int u = U - 2 - blockIdx.y;
 
-  if (t < 0 || u < 0) { // out of boundary.
+  if (t < 0 || u < 0)
+  { // out of boundary.
     return;
   }
 
@@ -188,35 +208,44 @@ __device__ void ComputeBetasCosts(
 
   Indexer3D idxr(maxT, maxU);
 
-  if (t == T - 2 && u == U - 2) {
+  if (t == T - 2 && u == U - 2)
+  {
     betas[idxr(bTgt, T - 1, U - 1)] =
         logProbs[(idxr(bTgt, T - 1, U - 1) << 1) + LOG_PROBS_SKIP_IDX];
   }
 
-  if (blockIdx.x > 0) { // wait for previous warp (in t-axis) is ready.
-    while (atomicAdd(counter, 0) < blockIdx.x) {
+  if (blockIdx.x > 0)
+  { // wait for previous warp (in t-axis) is ready.
+    while (atomicAdd(counter, 0) < blockIdx.x)
+    {
     }
   }
 
-  if (blockIdx.y > 0) { // wait for previous warp (in u-axis) is ready.
-    while (atomicAdd(counter - 1, 0) <= blockIdx.x) {
+  if (blockIdx.y > 0)
+  { // wait for previous warp (in u-axis) is ready.
+    while (atomicAdd(counter - 1, 0) <= blockIdx.x)
+    {
     }
   }
 
-  if (t == T - 2 && u >= 0) {
+  if (t == T - 2 && u >= 0)
+  {
     betas[idxr(bTgt, T - 1, u)] = betas[idxr(bTgt, T - 1, u + 1)] +
         logProbs[(idxr(bTgt, T - 1, u) << 1) + LOG_PROBS_EMIT_IDX];
   }
 
-  if (blockIdx.y == 0 && t >= 0) {
+  if (blockIdx.y == 0 && t >= 0)
+  {
     CAST_DTYPE skip_prob =
         logProbs[(idxr(bTgt, t, U - 1) << 1) + LOG_PROBS_SKIP_IDX];
     CAST_DTYPE val;
 
 #pragma unroll
-    for (int i = 1; i < warpSize; i <<= 1) {
+    for (int i = 1; i < warpSize; i <<= 1)
+    {
       val = __shfl_up_sync(0xffffffff, skip_prob, i);
-      if (i <= threadIdx.x) {
+      if (i <= threadIdx.x) 
+      {
         skip_prob = skip_prob + val;
       }
     }
@@ -225,7 +254,8 @@ __device__ void ComputeBetasCosts(
         betas[idxr(bTgt, T - 1 - blockIdx.x * blockDim.x, U - 1)] + skip_prob;
   }
 
-  if (t >= 0 && u >= 0) {
+  if (t >= 0 && u >= 0)
+  {
     CAST_DTYPE skip_prob =
         logProbs[(idxr(bTgt, t, u) << 1) + LOG_PROBS_SKIP_IDX];
     CAST_DTYPE emit_prob =
@@ -237,9 +267,11 @@ __device__ void ComputeBetasCosts(
     CAST_DTYPE val = math::lse(skip, emit);
     CAST_DTYPE out = val;
 
-    for (int i = 1; i < warpSize; ++i) {
+    for (int i = 1; i < warpSize; ++i)
+    {
       val = __shfl_up_sync(0xffffffff, val, 1);
-      if (i == threadIdx.x) {
+      if (i == threadIdx.x)
+      {
         val = math::lse(val + skip_prob, emit);
         out = val;
       }
@@ -247,12 +279,14 @@ __device__ void ComputeBetasCosts(
 
     betas[idxr(bTgt, t, u)] = out;
 
-    if (t == 0 && u == 0) { // use -beta(0, 0) as cost.
+    if (t == 0 && u == 0)
+    { // use -beta(0, 0) as cost.
       costs[bTgt] = DTYPE(-out);
     }
   }
 
-  if (threadIdx.x == 0) {
+  if (threadIdx.x == 0) 
+  {
     __threadfence();
     atomicAdd(counter, 1);
   }
@@ -274,10 +308,12 @@ __global__ void ComputeAlphasBetasCosts(
     DTYPE* costs,
     int warpSize = 0,
     int numWarps = 0,
-    int H = 1) {
+    int H = 1)
+{
   assert(threadIdx.y == 0 || threadIdx.y == 1);
 
-  if (threadIdx.y == 0) {
+  if (threadIdx.y == 0) 
+  {
     ComputeAlphas<DTYPE, CAST_DTYPE>(
         /*maxSrcLen=*/maxSrcLen,
         /*maxTgtLen=*/maxTgtLen,
@@ -289,7 +325,9 @@ __global__ void ComputeAlphasBetasCosts(
         /*alpha_counters=*/alpha_counters,
         /*alphas=*/alphas,
         H);
-  } else { // threadIdx.y == 1
+  }
+  else
+  { // threadIdx.y == 1
     ComputeBetasCosts<DTYPE, CAST_DTYPE>(
         /*maxSrcLen=*/maxSrcLen,
         /*maxTgtLen=*/maxTgtLen,
@@ -320,7 +358,8 @@ __global__ void ComputeGradients(
     const CAST_DTYPE* alphas,
     const CAST_DTYPE* betas,
     DTYPE* gradients,
-    int H = 1) {
+    int H = 1) 
+{
   const int bTgt = blockIdx.z; // 0 <= b < B
   const int t = blockIdx.x * blockDim.x + threadIdx.x;
   const int u = blockIdx.y;
@@ -358,7 +397,8 @@ __global__ void ComputeAlphasWrapper(
     const int* tgtLengths,
     int* alpha_counters,
     volatile CAST_DTYPE* alphas,
-    int H = 1) {
+    int H = 1)
+{
   ComputeAlphas<DTYPE, CAST_DTYPE>(
       maxSrcLen,
       maxTgtLen,
@@ -386,7 +426,8 @@ __global__ void ComputeBetasWrapper(
     int* betaCounters,
     volatile CAST_DTYPE* betas,
     DTYPE* costs,
-    int H = 1) {
+    int H = 1)
+{
   ComputeBetasCosts<DTYPE, CAST_DTYPE>(
       maxSrcLen,
       maxTgtLen,

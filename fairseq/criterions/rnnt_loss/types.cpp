@@ -3,8 +3,10 @@
 namespace torchaudio {
 namespace rnnt {
 
-const char* toString(status_t status) {
-  switch (status) {
+const char* toString(status_t status)
+{
+  switch (status) 
+  {
     case SUCCESS:
       return "success";
     case FAILURE:
@@ -24,8 +26,10 @@ const char* toString(status_t status) {
   }
 }
 
-const char* toString(device_t device) {
-  switch (device) {
+const char* toString(device_t device) 
+{
+  switch (device) 
+  {
     case UNDEFINED:
       return "undefined";
     case CPU:
