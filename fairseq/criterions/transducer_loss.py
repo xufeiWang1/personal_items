@@ -100,10 +100,13 @@ class TransducerLossCriterion(FairseqCriterion):
             sample["ntokens"] if "ntokens" in sample else target_lengths.sum().item()
         )
 
+        nframes =  encoder_out_lengths.sum().item()
+
         sample_size = sample["target"].size(0) if self.sentence_avg else ntokens
         logging_output = {
             "loss": utils.item(loss.data),  # * sample['ntokens'],
             "ntokens": ntokens,
+            "nframes": nframes,
             "nsentences": sample["nsentences"],
             "sample_size": sample_size,
         }

@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import time
+import gc
 from argparse import Namespace
 from itertools import chain
 from typing import Any, Dict, List
@@ -840,15 +841,20 @@ class Trainer(object):
                     torch.cuda.empty_cache()
             except RuntimeError as e:
                 if "out of memory" in str(e):
-                    self._log_oom(e)
+                    # self._log_oom(e)
                     if raise_oom:
                         raise e
+
+                    logger.warning("OOM occured for batch with input: {}, and target: {}"
+                                   .format(sample['net_input']['src_tokens'].size(),
+                                           sample['target'].size()))
                     logger.warning(
                         "attempting to recover from OOM in forward/backward pass"
                     )
                     ooms += 1
                     self.zero_grad()
                     if self.cuda:
+                        gc.collect()
                         torch.cuda.empty_cache()
                     if self.cfg.distributed_training.distributed_world_size == 1:
                         return None
@@ -1234,6 +1240,9 @@ class Trainer(object):
         elif name == "wps":
             m = metrics.get_meter("train", "wps")
             return m or meters.TimeMeter()
+        elif name == "fps":
+            m = metrics.get_meter("train", "fps")
+            return m or meters.TimeMeter()
         elif name in {"valid_loss", "valid_nll_loss"}:
             # support for legacy train.py, which assumed these meters
             # are always initialized
@@ -1535,7 +1544,7 @@ class Trainer(object):
             else:
                 logging_output = agg.get_smoothed_values()
                 logging_output["sample_size"] = sample_size
-                for key_to_delete in ["ppl", "wps", "wpb", "bsz"]:
+                for key_to_delete in ["ppl", "wps",  "fps", "wpb", "bsz"]:
                     if key_to_delete in logging_output:
                         del logging_output[key_to_delete]
             return logging_output
