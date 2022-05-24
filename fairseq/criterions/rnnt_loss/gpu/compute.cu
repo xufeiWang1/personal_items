@@ -92,7 +92,7 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > compute(
 
   torch::Tensor costs = torch::empty(
       options.batchSize_ * options.nHypos_,
-      torch::TensorOptions().device(logits.device()).dtype(logits.dtype()));
+      torch::TensorOptions().device(logits.device()).dtype(torch::ScalarType::Float));
   // c10::optional<torch::Tensor> gradients = torch::zeros_like(logits);
 
   torch::Tensor int_workspace = torch::empty(
@@ -137,7 +137,7 @@ std::tuple<torch::Tensor, c10::optional<torch::Tensor> > compute(
                     /*targets=*/targets.data_ptr<int>(),
                     /*logit_lengths=*/logit_lengths.data_ptr<int>(),
                     /*target_lengths=*/target_lengths.data_ptr<int>(),
-                    /*costs=*/costs.data_ptr<c10::Half>(),
+                    /*costs=*/costs.data_ptr<float>(),
                     /*gradients=*/logits.data_ptr<c10::Half>());
             break;
         }

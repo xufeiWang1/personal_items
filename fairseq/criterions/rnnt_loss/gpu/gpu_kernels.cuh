@@ -200,7 +200,7 @@ __device__ void ComputeBetasCosts(
     const int* tgtLengths,
     int* betaCounters,
     volatile CAST_DTYPE* betas,
-    DTYPE* costs,
+    CAST_DTYPE* costs,
     int H = 1)
 {
   const int& maxT = maxSrcLen;
@@ -296,7 +296,8 @@ __device__ void ComputeBetasCosts(
 
     if (t == 0 && u == 0)
     { // use -beta(0, 0) as cost.
-      costs[bTgt] = DTYPE(-out);
+      // costs[bTgt] = CAST_DTYPE(-out);
+      costs[bTgt] = -out;
     }
   }
 
@@ -320,7 +321,7 @@ __global__ void ComputeAlphasBetasCosts(
     volatile CAST_DTYPE* alphas,
     int* betaCounters,
     volatile CAST_DTYPE* betas,
-    DTYPE* costs,
+    CAST_DTYPE* costs,
     int warpSize = 0,
     int numWarps = 0,
     int H = 1)
@@ -440,7 +441,7 @@ __global__ void ComputeBetasWrapper(
     const int* tgtLengths,
     int* betaCounters,
     volatile CAST_DTYPE* betas,
-    DTYPE* costs,
+    CAST_DTYPE* costs,
     int H = 1)
 {
   ComputeBetasCosts<DTYPE, CAST_DTYPE>(

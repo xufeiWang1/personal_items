@@ -107,7 +107,7 @@ status_t Compute(
     const int* targets,
     const int* srcLengths,
     const int* tgtLengths,
-    DTYPE* costs,
+    CAST_DTYPE* costs,
     DTYPE* gradients = nullptr)
 {
   const Options& options = workspace.GetOptions();
