@@ -93,7 +93,6 @@ class TransducerLossCriterion(FairseqCriterion):
             clamp=-1.0,
             reduction=("sum" if reduce else "none"),
         )
-
         # torch.cuda.empty_cache()
 
         ntokens = (

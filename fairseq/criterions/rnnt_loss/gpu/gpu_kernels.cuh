@@ -377,13 +377,16 @@ __global__ void ComputeGradients(
     int H = 1) 
 {
   const int bTgt = blockIdx.z; // 0 <= b < B
-  const int t = blockIdx.x * blockDim.x + threadIdx.x;
+  // const int t = blockIdx.x * blockDim.x + threadIdx.x;
   const int u = blockIdx.y;
+  const int t = blockIdx.x;
+  const int d = threadIdx.x;
 
   ComputeGradientsElement(
       bTgt,
       t,
       u,
+      d,
       maxSrcLen,
       maxTgtLen,
       numTargets,

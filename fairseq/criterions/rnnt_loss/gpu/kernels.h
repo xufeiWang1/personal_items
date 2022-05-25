@@ -13,6 +13,7 @@ HOST_AND_DEVICE void ComputeGradientsElement(
     int bTgt,
     int t,
     int u,
+    int d_start,
     int maxSrcLen,
     int maxTgtLen,
     int numTargets,
@@ -46,7 +47,7 @@ HOST_AND_DEVICE void ComputeGradientsElement(
       if (idx_b_t_u_zero != -1)
       {
         long int start = (long int)idx_b_t_u_zero * D;
-        for (long int b_t_u_d = start; b_t_u_d < start + D; ++b_t_u_d)
+        for (long int b_t_u_d = start+d_start; b_t_u_d < start + D; b_t_u_d+=blockDim.x)
         {
           gradients[b_t_u_d] = 0;
         }
@@ -73,7 +74,7 @@ HOST_AND_DEVICE void ComputeGradientsElement(
 
   if (isinf(cost) || isnan(cost))
   {
-    for (int d = 0; d < D; ++d)
+    for (int d = d_start; d < D; d+=blockDim.x)
     {
       long int b_t_u_d = (long int)idx_b_t_u * D + d;
       gradients[b_t_u_d] = 0;
@@ -82,7 +83,7 @@ HOST_AND_DEVICE void ComputeGradientsElement(
   }
 
   CAST_DTYPE c = alphas[idx_b_t_u] + cost - denominators[idx_b_t_u];
-  for (int d = 0; d < D; ++d)
+  for (int d = d_start; d < D; d+=blockDim.x)
   {
     long int b_t_u_d = (long int)idx_b_t_u * D + d;
     CAST_DTYPE g = CAST_DTYPE(logits[b_t_u_d]) + c;

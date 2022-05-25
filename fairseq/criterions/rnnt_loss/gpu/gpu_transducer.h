@@ -203,10 +203,11 @@ status_t Compute(
     // don't set gradients to zero to here as gradients might reuse memory from
     // logits
 
-    int num_blocks =
-        (max_T + MAX_THREADS_PER_BLOCK - 1) / MAX_THREADS_PER_BLOCK;
-    dim3 block_dims(num_blocks, max_U, B * H);
+    // int num_blocks = (max_T + MAX_THREADS_PER_BLOCK - 1) / MAX_THREADS_PER_BLOCK;
+    dim3 block_dims(max_T, max_U, B * H);
     dim3 thread_dims(MAX_THREADS_PER_BLOCK);
+
+    // printf ("xiexie0: max_T: %d, max_U: %d, B: %d, H: %d, thread_num: %d\n", max_T, max_U, B, H, MAX_THREADS_PER_BLOCK);
 
     ComputeGradients<DTYPE, CAST_DTYPE><<<block_dims, thread_dims, 0, stream>>>(
         /*max_src_len=*/max_T,
