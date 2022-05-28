@@ -152,10 +152,13 @@ class CtcCriterion(FairseqCriterion):
             sample["ntokens"] if "ntokens" in sample else target_lengths.sum().item()
         )
 
+        nframes =  input_lengths.sum().item()
+
         sample_size = sample["target"].size(0) if self.sentence_avg else ntokens
         logging_output = {
             "loss": utils.item(loss.data),  # * sample['ntokens'],
             "ntokens": ntokens,
+            "nframes": nframes,
             "nsentences": sample["id"].numel(),
             "sample_size": sample_size,
         }

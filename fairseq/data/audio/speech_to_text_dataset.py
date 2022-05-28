@@ -375,11 +375,15 @@ class SpeechToTextDataset(FairseqDataset):
     def ordered_indices(self):
         if self.shuffle:
             order = [np.random.permutation(len(self))]
+            order.append(np.random.permutation(len(self)))
         else:
             order = [np.arange(len(self))]
-        # first by descending order of # of frames then by original/random order
-        order.append([-n for n in self.tgt_lens])
-        order.append([-n for n in self.n_frames])
+            # first by descending order of # of frames then by original/random order
+            # the following order will cause bad convergence performance!
+            # order.append([-n for n in self.tgt_lens])
+
+            order.append([-n for n in self.n_frames])
+            # order[1] += np.random.randint(0, 100, (len(self)))
         return np.lexsort(order)
 
     def prefetch(self, indices):
