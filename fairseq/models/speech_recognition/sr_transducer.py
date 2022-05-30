@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 from fairseq.models.speech_recognition import Conv1dSubsampler
 from fairseq.models.speech_recognition.transformer_encoder import SRTransformerEncoder
 from fairseq.models.speech_recognition.conformer_encoder import SRConformerEncoder
+from fairseq.models.speech_recognition.chunk_transformer_encoder import SRChunkTransformerEncoder
 
 
 @dataclass
@@ -73,11 +74,18 @@ class SRTransducerConfig(FairseqDataclass):
     adaptive_input: bool = False
     no_scale_embedding: bool = False
     max_source_positions: int = 6000
+    use_pos_encoding: bool = True
     # for conformer encoder
     pos_enc_type: str = "rel_pos"
     depthwise_conv_kernel_size: int = 31
     attn_type: Optional[str] = "espnet"
     fp16: bool = False
+    # for chunk transformer
+    use_pos_encodding: bool = True
+    bidirectional: bool = False
+    n_future_chunksize: int = 1
+    n_prevhist: int = 0
+
 
     #### decoder config
     # decoder_type: str = "transformer"
@@ -131,6 +139,8 @@ class S2TTransducerModel(BaseFairseqModel):
             encoder = SRTransformerEncoder(args)
         elif args.encoder_type == "conformer":
             encoder = SRConformerEncoder(args)
+        elif args.encoder_type == "chunktransformer" or args.encoder_type == "chunkconformer":
+            encoder = SRChunkTransformerEncoder(args)
         else:
             raise NotImplemented
         pretraining_path = getattr(args, "load_pretrained_encoder_from", None)
