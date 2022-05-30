@@ -1,0 +1,49 @@
+# @package _group_
+
+common_eval:
+  path: /home/chenxie95/github/fairseq/outputs/asr_wenetspeech_transducer/checkpoint7.pt
+
+dataset:
+  skip_invalid_size_inputs_valid_test: true
+  max_tokens: 50000
+  gen_subset: dev
+
+generation:
+  _name: null
+  beam: 1
+  criterion_name: transducer_loss
+  # temperature: 1.3
+  # transducer-expansion-beta: 2
+  # transducer-expansion-gamma: 2.3
+  # transducer-prefix-alpha: 1
+
+model:
+  _name: sr_transducer
+  encoder_type: conformer
+  # encoder_type: transformer
+  encoder_embed_dim: 512
+  encoder_ffn_embed_dim: 2048
+  encoder_attention_heads: 8
+  encoder_layers: 12
+  decoder_embed_dim: 512
+  decoder_ffn_embed_dim: 2048
+  decoder_layers: 6
+  decoder_output_dim: 512
+  decoder_attention_heads: 8
+  decoder_hidden_size: 512
+  decoder_num_layers: 2
+  decoder_dropout_in: 0.1
+  decoder_dropout_out: 0.1
+  joint_dim: 512
+
+task: 
+  _name: speech_recognition
+  data: /mnt/data/WenetSpeech/data4fairseq-m/data4fairseq-m
+  config_yaml: config.yaml
+
+criterion:
+  _name: transducer_loss 
+
+scoring:
+  _name: wer
+  wer_char_level: true

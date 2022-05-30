@@ -146,6 +146,7 @@ def gen_config_yaml(
     audio_root: str = "",
     cmvn_type: str = "utterance",
     gcmvn_path: Optional[Path] = None,
+    bpe_type: str = "sentencepiece",
     extra=None
 ):
     manifest_root = manifest_root.absolute()
@@ -170,7 +171,7 @@ def gen_config_yaml(
     if spm_filename is not None:
         writer.set_bpe_tokenizer(
             {
-                "bpe": "sentencepiece",
+                "bpe": bpe_type,
                 "sentencepiece_model": (manifest_root / spm_filename).as_posix(),
             }
         )
@@ -242,6 +243,21 @@ def load_tsv_to_dicts(path: Union[str, Path]) -> List[dict]:
     return rows
 
 
+def save_chnchar_to_file(tgt_texts, out_filename, voc_size):
+    word2cnt = {}
+    for t in tgt_texts:
+        for word in t:
+            if word in word2cnt:
+                word2cnt[word] += 1
+            else:
+                word2cnt[word] = 1
+    sorted_wordcnts = sorted(word2cnt.items(), key=lambda x: x[1], reverse=True)
+    spm_filename = f"chnchar_{voc_size}.txt"
+    with open (out_filename, 'w') as f_voc:
+        for (word, cnt) in sorted_wordcnts[:voc_size]:
+            f_voc.write(f"{word} {cnt}\n")
+
+
 def filter_manifest_df(
     df, is_train_split=False, extra_filters=None, min_n_frames=5, max_n_frames=3000
 ):
@@ -278,7 +294,7 @@ def compute_cmvn_stats(zip_path: Path, zip_root: Optional[Path] = None, is_audio
     with zipfile.ZipFile(_zip_path, mode="r") as f:
         info = f.infolist()
 
-    mean, square_sum = None, None
+    mean_sum, square_sum = None, None
     n_frame = 0
     for i in tqdm(info):
         offset, file_size = i.header_offset + 30 + len(i.filename), i.file_size
@@ -289,15 +305,15 @@ def compute_cmvn_stats(zip_path: Path, zip_root: Optional[Path] = None, is_audio
             assert is_npy_data(byte_data), i
             byte_data_fp = io.BytesIO(byte_data)
             feature = np.load(byte_data_fp)
-            if mean is None:
-                mean = feature.sum(axis=0)
-                square_sums = (feature ** 2).sum(axis=0)
+            if mean_sum is None:
+                mean_sum = feature.sum(axis=0)
+                square_sum = (feature ** 2).sum(axis=0)
             else:
-                mean += feature.sum(axis=0)
-                square_sums += (feature ** 2).sum(axis=0)
+                mean_sum += feature.sum(axis=0)
+                square_sum += (feature ** 2).sum(axis=0)
             n_frame += feature.shape[0]
-    mean = mean / n_frame
-    var = square_sums / n_frame - mean ** 2
+    mean = mean_sum / n_frame
+    var = square_sum / n_frame - mean ** 2
     std = np.sqrt(np.maximum(var, 1e-8))
 
     mean = mean.astype("float32")
@@ -306,6 +322,14 @@ def compute_cmvn_stats(zip_path: Path, zip_root: Optional[Path] = None, is_audio
     dirname = _zip_path.parent
     np.savetxt(dirname.joinpath("fbank80.mean"), mean, delimiter="\n")
     np.savetxt(dirname.joinpath("fbank80.std"),  std,  delimiter="\n")
+    with open(dirname.joinpath("cmvn.stats"), "w") as f_stats:
+        f_stats.write(f"{n_frame}\n")
+        for m in mean_sum:
+            f_stats.write(f"{m} ")
+        f_stats.write("\n")
+        for v in square_sum:
+            f_stats.write(f"{v} ")
+        f_stats.write("\n")
 
     global_cmvn = {"mean": mean, "std": std}
     np.save(dirname.joinpath("global_cmvn.npy"), global_cmvn)
