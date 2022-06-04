@@ -77,4 +77,7 @@ class EvaluationTokenizer(object):
         if self.lowercase:
             tokenized = tokenized.lower()
 
+        # to ensure <unk> only count as one word, instead of multiple words
+        tokenized = tokenized.replace("< < u n k > >", "<unk>")
+
         return tokenized

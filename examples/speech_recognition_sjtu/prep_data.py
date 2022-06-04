@@ -43,6 +43,7 @@ MANIFEST_COLUMNS = ["id", "audio", "n_frames", "tgt_text", "speaker"]
 
 
 def process(args):
+    args.output_root = args.output_root.replace(".", "_")
     out_root = Path(args.output_root).absolute()
     if world_size > 1:
         out_root = out_root.with_suffix(f".rank{rank}")
@@ -103,6 +104,15 @@ def process(args):
                     esample = int(etime * args.target_sample_rate)
 
                     wav_seg = wav[:, ssample:esample]
+
+                    if args.speed != 1.0:
+                        assert args.speed > 0.0, "speed pertubation requires speed to be larger than 0"
+                        # need to explicitly state the input and output sample rate
+                        effects = [["speed", f'{args.speed:.5f}'],
+                                   ['rate', f'{args.target_sample_rate}']]
+                        wavseg, _ = torchaudio.sox_effects.apply_effects_tensor(
+                            wav_seg, args.target_sample_rate, effects,
+                        )
 
                     extract_fbank_features(wav_seg, args.target_sample_rate, feature_root/f"{sample_id}.npy")
 
@@ -187,8 +197,8 @@ def process(args):
         shutil.rmtree(feature_root)
 
 
-        # collect and merge cmvn
-        if world_size > 1:
+        # post-processing: collect and merge cmvn
+        if args.for_train and  world_size > 1:
             comm.Barrier()
             # only use rank 0 for merge operation
             if rank == 0:
@@ -278,6 +288,7 @@ def main():
     parser.add_argument("--vocab-type", default="unigram", type=str, choices=["bpe", "unigram", "char", "chnchar"]),
     parser.add_argument("--vocab-size", default=10000, type=int)
     parser.add_argument("--target-sample-rate", default=16000, type=int)
+    parser.add_argument("--speed", default=1.0, type=float)
     args = parser.parse_args()
 
     process(args)
