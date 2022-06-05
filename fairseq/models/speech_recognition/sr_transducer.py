@@ -85,6 +85,8 @@ class SRTransducerConfig(FairseqDataclass):
     bidirectional: bool = False
     n_future_chunksize: int = 1
     n_prevhist: int = 0
+    # for pretrained SSL model
+    ssl_model_path: Optional[str] = None
 
 
     #### decoder config
@@ -127,11 +129,12 @@ class S2TTransducerModel(BaseFairseqModel):
     project inputs into the encoder dimension as well as downsample input
     sequence for computational efficiency."""
 
-    def __init__(self, encoder, decoder, jointnet):
+    def __init__(self, encoder, decoder, jointnet, encoder_type=None):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.jointnet = jointnet
+        self.encoder_type = encoder_type
 
     @classmethod
     def build_encoder(cls, args):
@@ -141,6 +144,25 @@ class S2TTransducerModel(BaseFairseqModel):
             encoder = SRConformerEncoder(args)
         elif args.encoder_type == "chunktransformer" or args.encoder_type == "chunkconformer":
             encoder = SRChunkTransformerEncoder(args)
+        # load pretrained SSL model
+        elif args.encoder_type == "data2vec":
+            from examples.data2vec.models.data2vec_audio import Data2VecAudioModel, Data2VecAudioConfig
+            from fairseq import checkpoint_utils
+            ssl_model_path = args.ssl_model_path
+            state = checkpoint_utils.load_checkpoint_to_cpu(ssl_model_path)
+            model_file_cfg = state["cfg"]["model"]
+            ssl_model_cfg = Data2VecAudioConfig()
+            # update the config class for data2vec model from the checkpoint file
+            for k, v in model_file_cfg.items():
+                setattr(ssl_model_cfg, k, v)
+            encoder = Data2VecAudioModel(ssl_model_cfg)
+            if "_ema" in state["model"]:
+                del state["model"]["_ema"]
+            # fix the name mismatch in checkpoint from Fiarseq github repo
+            if state["model"].get("final_proj.0.weight", None) is not None:
+                state["model"]["final_proj.weight"] = state["model"].pop("final_proj.0.weight")
+                state["model"]["final_proj.bias"] = state["model"].pop("final_proj.0.bias")
+            encoder.load_state_dict(state["model"], strict=True)
         else:
             raise NotImplemented
         pretraining_path = getattr(args, "load_pretrained_encoder_from", None)
@@ -188,7 +210,7 @@ class S2TTransducerModel(BaseFairseqModel):
         encoder = cls.build_encoder(args)
         decoder = cls.build_decoder(args, task, decoder_embed_tokens)
         jointnet = cls.build_jointnet(args, task)
-        return cls(encoder, decoder, jointnet)
+        return cls(encoder, decoder, jointnet, args.encoder_type)
 
     def get_normalized_probs(
         self,
@@ -207,9 +229,28 @@ class S2TTransducerModel(BaseFairseqModel):
         argument in its input, which is not supported in torchscript. This
         method overwrites the forward method definition without **kwargs.
         """
-        encoder_outs = self.encoder(src_tokens=src_tokens, src_lengths=src_lengths)
-        encoder_out = encoder_outs['encoder_out'][0]
-        encoder_out_lengths = encoder_outs['encoder_out_lengths'][0]
+        if self.encoder_type == "data2vec":
+            # B x T x 1
+            source = src_tokens.squeeze(-1)
+            # postprocessing, normalize for data2vec
+            with torch.no_grad():
+                source = nn.functional.layer_norm(source, source.shape[1:])
+
+            encoder_padding_mask = lengths_to_padding_mask(src_lengths)
+            res = self.encoder.extract_features(source, encoder_padding_mask)
+            encoder_out = res["x"]
+            padding_mask = res["padding_mask"]
+            if padding_mask is None:
+                B = encoder_out.size(0)
+                max_T = encoder_out.size(1)
+                encoder_out_lengths = torch.zeros(B, dtype=torch.int32, device=source.device).fill_(max_T)
+            else:
+                encoder_out_lengths = torch.sum(~padding_mask, dim=-1)
+        else:
+            encoder_outs = self.encoder(src_tokens=src_tokens, src_lengths=src_lengths)
+            encoder_out = encoder_outs['encoder_out'][0]
+            encoder_out_lengths = encoder_outs['encoder_out_lengths'][0]
+            encoder_out = encoder_out.transpose(0, 1)
         # decoder_outs = self.decoder(src_tokens=prev_output_tokens, src_lengths=target_lengths)
 
         # current rnnt_loss requires the out dim: B x T x (L+1) x D
@@ -221,7 +262,6 @@ class S2TTransducerModel(BaseFairseqModel):
         # decoder_outs = self.decoder(src_tokens=prev_output_tokens)
         decoder_out = decoder_outs['encoder_out'][0]
 
-        encoder_out = encoder_out.transpose(0, 1)
         decoder_out = decoder_out.transpose(0, 1)
 
         jointnet_out = self.jointnet(encoder_out, decoder_out)

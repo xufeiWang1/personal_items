@@ -7,9 +7,11 @@ from typing import Dict, Optional
 
 import torch
 from torch import Tensor
+import torch.nn as nn
 
 from fairseq.infer.transducer_base_decoder import TransducerBaseDecoder
 from fairseq.infer.transducer_utils import clone_cached_state
+from fairseq.data.data_utils import lengths_to_padding_mask
 
 
 class TransducerGreedyDecoder(TransducerBaseDecoder):
@@ -83,9 +85,26 @@ class TransducerGreedyDecoder(TransducerBaseDecoder):
         bsz, src_len = src_tokens.size()[:2]
 
         # compute the encoder output
-        encoder_outs = self.model.encoder.forward(src_tokens, src_lengths)
-        enc_out = encoder_outs["encoder_out"][0].transpose(0, 1)  # B x T x C
-        enc_out_lengths = encoder_outs["encoder_out_lengths"][0]  # B
+        if self.model.encoder_type == "data2vec":
+            # B x T x 1
+            source = src_tokens.squeeze(-1)
+            # postprocessing, normalize for data2vec
+            source = nn.functional.layer_norm(source, source.shape[1:])
+
+            encoder_padding_mask = lengths_to_padding_mask(src_lengths)
+            res = self.model.encoder.extract_features(source, encoder_padding_mask)
+            enc_out = res["x"]
+            padding_mask = res["padding_mask"]
+            if padding_mask is None:
+                B = enc_out.size(0)
+                max_T = enc_out.size(1)
+                enc_out_lengths = torch.zeros(B, dtype=torch.int32, device=source.device).fill_(max_T)
+            else:
+                enc_out_lengths = torch.sum(~padding_mask, dim=-1)
+        else:
+            encoder_outs = self.model.encoder.forward(src_tokens, src_lengths)
+            enc_out = encoder_outs["encoder_out"][0].transpose(0, 1)  # B x T x C
+            enc_out_lengths = encoder_outs["encoder_out_lengths"][0]  # B
         max_enc_out_length = enc_out_lengths.max().item()
         max_len = (
             min(max_enc_out_length, self.max_len)

@@ -114,7 +114,14 @@ def process(args):
                             wav_seg, args.target_sample_rate, effects,
                         )
 
-                    extract_fbank_features(wav_seg, args.target_sample_rate, feature_root/f"{sample_id}.npy")
+                    if args.feat_type == "fbank":
+                        extract_fbank_features(wav_seg, args.target_sample_rate, feature_root/f"{sample_id}.npy")
+                    elif args.feat_type == "rawwav":
+                        # wav_seg: [1, N] -> [N, 1]
+                        wav_seg = wav_seg.transpose(0, 1)
+                        np.save(feature_root/f"{sample_id}.npy", wav_seg)
+                    else:
+                        raise NotImplementedError
 
             else:
                 ssample = 0
@@ -133,7 +140,10 @@ def process(args):
             id2txt[sample_id] = sent
             sample_ids.append(sample_id)
 
-        zip_path = out_root / f"{args.prefix}-fbank80.zip"
+        if args.feat_type == "fbank":
+            zip_path = out_root / f"{args.prefix}-fbank80.zip"
+        elif args.feat_type == "rawwav":
+            zip_path = out_root / f"{args.prefix}-rawwav.zip"
         print ("ZIPing features...")
         create_zip(feature_root, zip_path)
         print ("Fetching ZIP manifest...")
@@ -286,6 +296,7 @@ def main():
     parser.add_argument("--for-train", action="store_true")
     parser.add_argument("--prefix", default="train", required=True, type=str)
     parser.add_argument("--vocab-type", default="unigram", type=str, choices=["bpe", "unigram", "char", "chnchar"]),
+    parser.add_argument("--feat-type", default="fbank", type=str, choices=["fbank", "rawwav"]),
     parser.add_argument("--vocab-size", default=10000, type=int)
     parser.add_argument("--target-sample-rate", default=16000, type=int)
     parser.add_argument("--speed", default=1.0, type=float)
