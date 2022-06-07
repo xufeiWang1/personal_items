@@ -45,6 +45,9 @@ class SRConformerEncoder(FairseqEncoder):
             )
 
         self.linear = torch.nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim)
+        nn.init.xavier_normal_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+
         self.dropout = torch.nn.Dropout(args.dropout)
         self.conformer_layers = torch.nn.ModuleList(
             [

@@ -14,13 +14,13 @@ distributed_training:
 
 dataset:
   num_workers: 4
-  max_tokens: 2000000
+  max_tokens: 30000
   skip_invalid_size_inputs_valid_test: true
   train_subset: train-s-100h
   valid_subset: dev-tidy
   validate_interval: 1
   validate_interval_updates: 0
-  max_tokens_valid: 1000000
+  max_tokens_valid: 60000
 
 optimization:
   max_update: 150000
@@ -42,7 +42,7 @@ lr_scheduler:
 
 model:
   _name: sr_ctc
-  encoder_type: data2vec
+  encoder_type: data2vec_v2
   ssl_model_path: /home/chenxie95/github/fairseq/outputs/ssl_models/audio_base_ls.pt
   encoder_embed_dim: 768
   encoder_ffn_embed_dim: 2048
@@ -57,16 +57,15 @@ criterion:
   post_process: sentencepiece
 
 checkpoint:
-  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_rawwav_20ms
+  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_data2vec_fbank_40ms_randinit
   save_interval_updates: 0
   keep_interval_updates: -1
   no_epoch_checkpoints: false
 
 task:
   _name: speech_recognition
-  data: /mnt/data/GigaSpeech/gigaspeech-s-rawwav
+  data: /mnt/data/GigaSpeech/gigaspeech-s
   config_yaml: config.yaml
-  max_source_positions: 320000
 
 hydra:
     run:

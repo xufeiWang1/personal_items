@@ -42,6 +42,7 @@ class SRCTCConfig(FairseqDataclass):
 
     #### downsample layer config
     conv_kernel_sizes: str = "5,5"
+    # conv_kernel_sizes: str = "5"
     conv_channels: int = 1024
     input_feat_per_channel: int = 80
     input_channels: int = 1
@@ -99,11 +100,24 @@ class S2TCTCModel(BaseFairseqModel):
     project inputs into the encoder dimension as well as downsample input
     sequence for computational efficiency."""
 
-    def __init__(self, encoder, outlayer, encoder_type=None):
+    def __init__(self, encoder, outlayer, args=None):
         super().__init__()
         self.encoder = encoder
         self.outlayer = outlayer
-        self.encoder_type = encoder_type
+        self.encoder_type = args.encoder_type
+
+        if args.encoder_type == "data2vec_v2":
+            from fairseq.models.speech_recognition.convsubsampler import Conv1dSubsampler, Pooling1DSubsampler, SuperFrame
+            self.subsample = Conv1dSubsampler(
+                args.input_feat_per_channel * args.input_channels,
+                args.conv_channels,
+                args.encoder_embed_dim,
+                [int(k) for k in args.conv_kernel_sizes.split(",")] )
+
+            # self.linear = torch.nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim)
+            # nn.init.xavier_normal_(self.linear.weight)
+            # nn.init.zeros_(self.linear.bias)
+            # self.dropout = torch.nn.Dropout(args.dropout)
 
     @classmethod
     def build_encoder(cls, args):
@@ -112,7 +126,8 @@ class S2TCTCModel(BaseFairseqModel):
         elif args.encoder_type == "conformer":
             encoder = SRConformerEncoder(args)
         # load pretrained SSL model
-        elif args.encoder_type == "data2vec":
+        elif args.encoder_type == "data2vec" or args.encoder_type == "data2vec_v2":
+
             from examples.data2vec.models.data2vec_audio import Data2VecAudioModel, Data2VecAudioConfig
             from fairseq import checkpoint_utils
             ssl_model_path = args.ssl_model_path
@@ -129,7 +144,7 @@ class S2TCTCModel(BaseFairseqModel):
             if state["model"].get("final_proj.0.weight", None) is not None:
                 state["model"]["final_proj.weight"] = state["model"].pop("final_proj.0.weight")
                 state["model"]["final_proj.bias"] = state["model"].pop("final_proj.0.bias")
-            # encoder.load_state_dict(state["model"], strict=True)
+            encoder.load_state_dict(state["model"], strict=True)
         else:
             raise NotImplemented
 
@@ -159,7 +174,7 @@ class S2TCTCModel(BaseFairseqModel):
 
         encoder = cls.build_encoder(args)
         outlayer= cls.build_outlayer(args, task)
-        return cls(encoder, outlayer, args.encoder_type)
+        return cls(encoder, outlayer, args)
 
     def get_normalized_probs(
         self,
@@ -199,6 +214,16 @@ class S2TCTCModel(BaseFairseqModel):
                 encoder_out_lengths = torch.sum(~padding_mask, dim=-1)
             # encoder out dim: B x T x C -> T x B x C
             encoder_out = encoder_out.transpose(0, 1)
+        elif self.encoder_type == "data2vec_v2":
+            x, encoder_out_lengths = self.subsample(src_tokens, src_lengths=src_lengths)
+            # x = self.linear(x)
+            # x = self.dropout(x)
+            x = x.transpose(0, 1)
+
+            encoder_padding_mask = lengths_to_padding_mask(encoder_out_lengths)
+            encoder_out, _ = self.encoder.encoder(x, padding_mask=encoder_padding_mask)
+            encoder_out = encoder_out.transpose(0, 1)
+
         else:
             encoder_outs = self.encoder(src_tokens=src_tokens, src_lengths=src_lengths)
             encoder_out = encoder_outs['encoder_out'][0]
