@@ -6,7 +6,7 @@
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from omegaconf import II
 
@@ -294,6 +294,46 @@ class Data2VecAudioModel(BaseFairseqModel):
             )
 
         return input_lengths.to(torch.long)
+
+    def extract_rawwav_features(self,
+                                source: torch.Tensor,
+                                padding_mask: Optional[torch.Tensor] = None,
+                                ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        # features = self.forward_features(source)
+        features = self.feature_extractor(source)
+        features = features.transpose(1, 2)
+        features = self.layer_norm(features)
+        orig_padding_mask = padding_mask
+
+        if padding_mask is not None:
+            input_lengths = (1 - padding_mask.long()).sum(-1)
+            # apply conv formula to get real output_lengths
+            output_lengths = self._get_feat_extract_output_lengths(input_lengths)
+
+            padding_mask = torch.zeros(
+                features.shape[:2], dtype=features.dtype, device=features.device
+            )
+
+            # these two operations makes sure that all values
+            # before the output lengths indices are attended to
+            padding_mask[
+                (
+                    torch.arange(padding_mask.shape[0], device=padding_mask.device),
+                    output_lengths - 1,
+                )
+            ] = 1
+            padding_mask = (1 - padding_mask.flip([-1]).cumsum(-1).flip([-1])).bool()
+        else:
+            padding_mask = None
+
+        if self.post_extract_proj is not None:
+            features = self.post_extract_proj(features)
+
+        features = self.dropout_input(features)
+
+        features_out_lengths = torch.sum(~padding_mask, dim=-1)
+        return features, features_out_lengths
 
     def forward(
         self,

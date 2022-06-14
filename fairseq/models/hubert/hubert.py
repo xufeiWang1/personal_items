@@ -243,8 +243,8 @@ class HubertModel(BaseFairseqModel):
     def __init__(
         self,
         cfg: HubertConfig,
-        task_cfg: HubertPretrainingConfig,
-        dictionaries: List[Dictionary],
+        task_cfg: Optional[HubertPretrainingConfig] = None,
+        dictionaries: Optional[List[Dictionary]] = None,
     ) -> None:
         super().__init__()
         logger.info(f"HubertModel Config: {cfg}")
@@ -259,7 +259,8 @@ class HubertModel(BaseFairseqModel):
             conv_bias=cfg.conv_bias,
         )
         feature_ds_rate = np.prod([s for _, _, s in feature_enc_layers])
-        self.feat2tar_ratio = cfg.label_rate * feature_ds_rate / task_cfg.sample_rate
+        if task_cfg is not None:
+            self.feat2tar_ratio = cfg.label_rate * feature_ds_rate / task_cfg.sample_rate
 
         self.post_extract_proj = (
             nn.Linear(self.embed, cfg.encoder_embed_dim)
@@ -305,7 +306,7 @@ class HubertModel(BaseFairseqModel):
             )
 
         self.untie_final_proj = cfg.untie_final_proj
-        if self.untie_final_proj:
+        if dictionaries is not None and self.untie_final_proj:
             self.final_proj = nn.Linear(
                 cfg.encoder_embed_dim, final_dim * len(dictionaries)
             )
@@ -313,6 +314,8 @@ class HubertModel(BaseFairseqModel):
             self.final_proj = nn.Linear(cfg.encoder_embed_dim, final_dim)
 
         # modules below are not needed during fine-tuning
+        if dictionaries is None:
+            return
         if any([d is None for d in dictionaries]):
             logger.info("cannot find dictionary. assume will be used for fine-tuning")
         else:
@@ -523,6 +526,25 @@ class HubertModel(BaseFairseqModel):
             "features_pen": features_pen,
         }
         return result
+
+    def extract_rawwav_features(self,
+                                source: torch.Tensor,
+                                padding_mask: Optional[torch.Tensor] = None,
+                                ) -> Tuple[torch.Tensor, torch.Tensor]:
+        features = self.forward_features(source)
+        features = features.transpose(1, 2)
+        features = self.layer_norm(features)
+        if padding_mask is not None:
+            padding_mask = self.forward_padding_mask(features, padding_mask)
+
+        if self.post_extract_proj is not None:
+            features = self.post_extract_proj(features)
+        features = self.dropout_input(features)
+
+        features_out_lengths = torch.sum(~padding_mask, dim=-1)
+
+
+        return features, features_out_lengths
 
     def extract_features(
         self,

@@ -126,6 +126,13 @@ class Dictionary:
             return "<{}>".format(self.unk_word)
         else:
             return self.unk_word
+    def append_null_words(self, div=8):
+        idx = 0
+        while len(self) % 8 != 0:
+            null_word = "<NULL>_{}".format(idx)
+            self.add_symbol(null_word, n=1)
+            idx += 1
+
 
     def add_symbol(self, word, n=1, overwrite=False):
         """Adds a word to the dictionary"""
@@ -232,6 +239,10 @@ class Dictionary:
         """
         d = cls()
         d.add_from_file(f)
+
+        # append dict to be divided by 8, for efficient tensorcore computation
+        d.append_null_words(div=8)
+
         return d
 
     def add_from_file(self, f):

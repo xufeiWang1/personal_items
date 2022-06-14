@@ -105,11 +105,16 @@ class CtcCriterion(FairseqCriterion):
 
         self.zero_infinity = cfg.zero_infinity
         self.sentence_avg = cfg.sentence_avg
+        self._step = 0
 
     def forward(self, model, sample, reduce=True):
         net_output = model(**sample["net_input"])
+        if len(net_output) == 3:
+            l2loss = net_output[2]
+        else:
+            l2loss = None
         lprobs = model.get_normalized_probs(
-            net_output, log_probs=True
+            net_output[:2], log_probs=True
         ).contiguous()  # (T, B, C) from the encoder
 
         # the input_lengths is probably different to net_input['src_lengths]' due to the downsampling
@@ -147,6 +152,13 @@ class CtcCriterion(FairseqCriterion):
                 reduction="sum",
                 zero_infinity=self.zero_infinity,
             )
+
+        if self._step < 20000:
+        # if self._step < -1:
+            if l2loss is not None:
+                loss = loss + l2loss
+
+        self._step += 1
 
         ntokens = (
             sample["ntokens"] if "ntokens" in sample else target_lengths.sum().item()

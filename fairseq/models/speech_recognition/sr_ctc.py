@@ -5,6 +5,7 @@ import logging
 import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -41,8 +42,8 @@ from fairseq.models.speech_recognition.conformer_encoder import SRConformerEncod
 class SRCTCConfig(FairseqDataclass):
 
     #### downsample layer config
-    conv_kernel_sizes: str = "5,5"
-    # conv_kernel_sizes: str = "5"
+    # conv_kernel_sizes: str = "5,5"
+    conv_kernel_sizes: str = "5"
     conv_channels: int = 1024
     input_feat_per_channel: int = 80
     input_channels: int = 1
@@ -80,6 +81,7 @@ class SRCTCConfig(FairseqDataclass):
     fp16: bool = False
     # for pretrained SSL model
     ssl_model_path: Optional[str] = None
+    randinit: bool = False
 
 
     outproj_dim: int = 512
@@ -106,18 +108,27 @@ class S2TCTCModel(BaseFairseqModel):
         self.outlayer = outlayer
         self.encoder_type = args.encoder_type
 
-        if args.encoder_type == "data2vec_v2":
+        if args.encoder_type in ["data2vec_v2", "hubert_v2", "hubert", "hubert_feadaptor", "data2vec_feadaptor", "wav2vec2_feadaptor"] :
             from fairseq.models.speech_recognition.convsubsampler import Conv1dSubsampler, Pooling1DSubsampler, SuperFrame
+
+            if args.encoder_type in ["hubert_feadaptor", "data2vec_feadaptor", "wav2vec2_feadaptor"]:
+                args.input_feat_per_channel = 80
+                args.input_channels = 1
             self.subsample = Conv1dSubsampler(
                 args.input_feat_per_channel * args.input_channels,
                 args.conv_channels,
                 args.encoder_embed_dim,
                 [int(k) for k in args.conv_kernel_sizes.split(",")] )
 
-            # self.linear = torch.nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim)
-            # nn.init.xavier_normal_(self.linear.weight)
-            # nn.init.zeros_(self.linear.bias)
-            # self.dropout = torch.nn.Dropout(args.dropout)
+            self.linear = torch.nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim)
+            nn.init.xavier_normal_(self.linear.weight)
+            nn.init.zeros_(self.linear.bias)
+            self.dropout = torch.nn.Dropout(args.dropout)
+
+        stats_npz_path = "/mnt/data/librispeech/data4fairseq-s-rawwav/global_cmvn.npy"
+        stats = np.load(stats_npz_path, allow_pickle=True).tolist()
+        self.mean, self.std = stats["mean"], stats["std"]
+        self._step = 0
 
     @classmethod
     def build_encoder(cls, args):
@@ -126,7 +137,7 @@ class S2TCTCModel(BaseFairseqModel):
         elif args.encoder_type == "conformer":
             encoder = SRConformerEncoder(args)
         # load pretrained SSL model
-        elif args.encoder_type == "data2vec" or args.encoder_type == "data2vec_v2":
+        elif args.encoder_type in ["data2vec", "data2vec_v2", "data2vec_feadaptor"]:
 
             from examples.data2vec.models.data2vec_audio import Data2VecAudioModel, Data2VecAudioConfig
             from fairseq import checkpoint_utils
@@ -144,9 +155,38 @@ class S2TCTCModel(BaseFairseqModel):
             if state["model"].get("final_proj.0.weight", None) is not None:
                 state["model"]["final_proj.weight"] = state["model"].pop("final_proj.0.weight")
                 state["model"]["final_proj.bias"] = state["model"].pop("final_proj.0.bias")
+            if args.randinit is False:
+                encoder.load_state_dict(state["model"], strict=True)
+
+        elif args.encoder_type in ["hubert", "hubert_v2", "hubert_feadaptor"]:
+            from fairseq.models.hubert import HubertConfig, HubertModel
+            from fairseq import checkpoint_utils
+            ssl_model_path = args.ssl_model_path
+            state = checkpoint_utils.load_checkpoint_to_cpu(ssl_model_path)
+            model_file_cfg = state["cfg"]["model"]
+            ssl_model_cfg = HubertConfig()
+            # update the config class for data2vec model from the checkpoint file
+            for k, v in model_file_cfg.items():
+                setattr(ssl_model_cfg, k, v)
+            encoder = HubertModel(ssl_model_cfg)
+            state["model"].pop("label_embs_concat", None)
+            if args.randinit is False:
+                encoder.load_state_dict(state["model"], strict=True)
+        elif args.encoder_type in ["wav2vec2", "wav2vec2_feadaptor"]:
+            from fairseq.models.wav2vec import Wav2Vec2Model, Wav2Vec2Config
+            from fairseq import checkpoint_utils
+            ssl_model_path = args.ssl_model_path
+            state = checkpoint_utils.load_checkpoint_to_cpu(ssl_model_path)
+            model_file_cfg = state["cfg"]["model"]
+            ssl_model_cfg = Wav2Vec2Config()
+            for k, v in model_file_cfg.items():
+                setattr(ssl_model_cfg, k, v)
+            encoder = Wav2Vec2Model(ssl_model_cfg)
             encoder.load_state_dict(state["model"], strict=True)
         else:
             raise NotImplemented
+
+
 
         pretraining_path = getattr(args, "load_pretrained_encoder_from", None)
         if pretraining_path is not None:
@@ -188,6 +228,70 @@ class S2TCTCModel(BaseFairseqModel):
         lprobs.batch_first = True
         return lprobs
 
+
+    def extract_fbank_features(self, source, src_lengths):
+        from fairseq.data.audio.audio_utils import _get_torchaudio_fbank, _get_kaldi_fbank
+        sample_rate = 16000
+        n_mel_bins = 80
+
+        fbank_lengths = []
+        fbank_features = []
+        with torch.no_grad():
+            for batch_idx in range(source.size(0)):
+                _waveform = source[batch_idx][:src_lengths[batch_idx]]
+                _waveform = _waveform * (2 ** 15)
+                _waveform = _waveform.float().cpu().unsqueeze(0).numpy()
+                features = _get_kaldi_fbank(_waveform, sample_rate, n_mel_bins)
+                if features is None:
+                    features = _get_torchaudio_fbank(_waveform, sample_rate, n_mel_bins)
+
+                features = torch.from_numpy(features)
+                features = np.subtract(features, self.mean)
+                features = np.divide(features, self.std)
+                features = features.cuda()
+
+                feat_len = features.size(0)
+                if batch_idx == 0:
+                    max_len  = feat_len
+                else:
+                    if feat_len != max_len:
+                        pad_len = max_len - feat_len
+                        features_padding = features.new(pad_len, n_mel_bins).fill_(0)
+                        features = torch.cat([features, features_padding], dim=0)
+                        features = features.type(source.dtype)
+
+                fbank_features.append(features)
+                fbank_lengths.append(feat_len)
+
+            fbank_features = torch.stack(fbank_features, dim=0).contiguous().type(source.dtype)
+            fbank_lengths = torch.Tensor(fbank_lengths).int().cuda()
+
+        # subsampling on fbank features
+        fbank_features, encoder_out_lengths = self.subsample(fbank_features, src_lengths=fbank_lengths)
+        fbank_features = self.linear(fbank_features)
+        fbank_features = self.dropout(fbank_features)
+        return fbank_features, encoder_out_lengths
+
+
+    def ComputeFrontEndMSELoss(self, fbank_features, fbank_lengths, rawwav_features, rawwav_lengths):
+        l2loss = 0
+        mbsize = fbank_lengths.size(0)
+
+        for index in range(mbsize):
+            if self.subsample.n_layers == 2:
+                valid_len = min(fbank_lengths[index], rawwav_lengths[index]//2)
+                l2loss += torch.sum(torch.pow(fbank_features[index,:valid_len, :]-rawwav_features[index,:valid_len*2:2,:], 2)) / (valid_len * fbank_features.size(-1))
+            else:
+                valid_len = min(fbank_lengths[index], rawwav_lengths[index])
+                l2loss += torch.sum(torch.pow(fbank_features[index,:valid_len, :]-rawwav_features[index,:valid_len,:], 2)) / (valid_len * fbank_features.size(-1))
+
+        l2loss /= mbsize
+        # l2loss = torch.sum(torch.pow(fbank_features-rawwav_features, 2)) / torch.numel(fbank_features)
+
+
+        return l2loss
+
+
     def forward(self, src_tokens, src_lengths, prev_output_tokens=None):
         """
         The forward method inherited from the base class has a **kwargs
@@ -214,15 +318,99 @@ class S2TCTCModel(BaseFairseqModel):
                 encoder_out_lengths = torch.sum(~padding_mask, dim=-1)
             # encoder out dim: B x T x C -> T x B x C
             encoder_out = encoder_out.transpose(0, 1)
-        elif self.encoder_type == "data2vec_v2":
+
+        elif self.encoder_type == "hubert":
+            # B x T x 1
+            source = src_tokens.squeeze(-1)
+            # postprocessing, normalize for data2vec
+            with torch.no_grad():
+                source = nn.functional.layer_norm(source, source.shape[1:])
+
+            encoder_padding_mask = lengths_to_padding_mask(src_lengths)
+
+            encoder_out, padding_mask = self.encoder.extract_features(source, encoder_padding_mask)
+            if padding_mask is None:
+                B = encoder_out.size(0)
+                max_T = encoder_out.size(1)
+                encoder_out_lengths = torch.zeros(B, dtype=torch.int32, device=source.device).fill_(max_T)
+            else:
+                encoder_out_lengths = torch.sum(~padding_mask, dim=-1)
+            # encoder out dim: B x T x C -> T x B x C
+            encoder_out = encoder_out.transpose(0, 1)
+
+        elif self.encoder_type == "wav2vec2":
+            # B x T x 1
+            source = src_tokens.squeeze(-1)
+            # postprocessing, normalize for data2vec
+            with torch.no_grad():
+                source = nn.functional.layer_norm(source, source.shape[1:])
+
+            encoder_padding_mask = lengths_to_padding_mask(src_lengths)
+
+            res = self.encoder.extract_features(source, encoder_padding_mask)
+            encoder_out = res["x"]
+            padding_mask = res["padding_mask"]
+            if padding_mask is None:
+                B = encoder_out.size(0)
+                max_T = encoder_out.size(1)
+                encoder_out_lengths = torch.zeros(B, dtype=torch.int32, device=source.device).fill_(max_T)
+            else:
+                encoder_out_lengths = torch.sum(~padding_mask, dim=-1)
+            # encoder out dim: B x T x C -> T x B x C
+            encoder_out = encoder_out.transpose(0, 1)
+
+
+        elif self.encoder_type == "data2vec_v2" or self.encoder_type == "hubert_v2":
             x, encoder_out_lengths = self.subsample(src_tokens, src_lengths=src_lengths)
-            # x = self.linear(x)
-            # x = self.dropout(x)
+            x = self.linear(x)
+            x = self.dropout(x)
             x = x.transpose(0, 1)
 
             encoder_padding_mask = lengths_to_padding_mask(encoder_out_lengths)
             encoder_out, _ = self.encoder.encoder(x, padding_mask=encoder_padding_mask)
             encoder_out = encoder_out.transpose(0, 1)
+
+        elif self.encoder_type in ["hubert_feadaptor", "data2vec_feadaptor", "wav2vec2_feadaptor"]:
+            # B x T x 1
+            source = src_tokens.squeeze(-1)
+
+            ##### extract rawwav freature
+            # postprocessing, normalize for data2vec
+            src_padding_mask = lengths_to_padding_mask(src_lengths)
+            with torch.no_grad():
+                # only data2vec applied the layer norm on raw wav
+                if self.encoder_type == "data2vec_feadaptor":
+                    raw_source = nn.functional.layer_norm(source, source.shape[1:])
+                else:
+                    raw_source = source
+                rawwav_features, rawwav_encoder_out_lengths = self.encoder.extract_rawwav_features(raw_source, src_padding_mask)
+
+            ##### extract fbank feature
+            x, encoder_out_lengths = self.extract_fbank_features(source, src_lengths)
+            # fbank_fetures: T * B * C -> B * T * C
+            fbank_features = x.transpose(0, 1)
+
+            l2loss = self.ComputeFrontEndMSELoss(fbank_features, encoder_out_lengths, rawwav_features, rawwav_encoder_out_lengths)
+
+            if self._step % 100 == 0:
+                print (f"\t\txiexie0, step: {self._step}: l2loss: {l2loss}")
+            self._step += 1
+
+
+            if self._step < 20000:
+            # if self._step < -1:
+                x = x.detach()
+            x = x.transpose(0, 1)
+
+            encoder_padding_mask = lengths_to_padding_mask(encoder_out_lengths)
+            encoder_out, _ = self.encoder.encoder(x, padding_mask=encoder_padding_mask)
+            encoder_out = encoder_out.transpose(0, 1)
+
+            # output classify layer
+            outs = self.outlayer(encoder_out)
+
+            return outs, encoder_out_lengths, l2loss
+
 
         else:
             encoder_outs = self.encoder(src_tokens=src_tokens, src_lengths=src_lengths)

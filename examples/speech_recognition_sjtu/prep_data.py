@@ -133,7 +133,12 @@ def process(args):
                     wav = F.resample(wav, sample_rate, args.target_sample_rate)
                 sample_rate = args.target_sample_rate
 
-                extract_fbank_features(wav, sample_rate, feature_root/f"{sample_id}.npy")
+                if args.feat_type == "fbank":
+                    extract_fbank_features(wav, sample_rate, feature_root/f"{sample_id}.npy")
+                elif args.feat_type == "rawwav":
+                    # wav_seg: [1, N] -> [N, 1]
+                    wav = wav.transpose(0, 1)
+                    np.save(feature_root/f"{sample_id}.npy", wav)
 
 
             sent = ' '.join(line.split()[1:]).strip()

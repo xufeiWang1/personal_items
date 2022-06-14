@@ -42,7 +42,12 @@ class ChncharBPE(object):
         return ' '.join(words_tn)
 
     def decode(self, x: str) -> str:
-        return x.replace(" ", "").strip()
+        # return x.replace(" ", "").strip()
+        # for Chinese characters
+        x = x.replace(" ", "").strip()
+        # this is for Librispeech
+        x = x.replace("|", " ")
+        return x
 
     def is_beginning_of_word(self, x: str) -> bool:
         if x in ["<unk>", "<s>", "</s>", "<pad>"]:

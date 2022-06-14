@@ -57,7 +57,7 @@ criterion:
   post_process: sentencepiece
 
 checkpoint:
-  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_rawwav_20ms
+  save_dir: /home/chenxie95/github/fairseq/outputs/asr_gigaspeech_ctc_rawwav_20ms_randinit
   save_interval_updates: 0
   keep_interval_updates: -1
   no_epoch_checkpoints: false
