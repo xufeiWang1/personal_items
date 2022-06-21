@@ -79,7 +79,12 @@ class SpecAugmentTransform(AudioFeatureTransform):
     def __call__(self, spectrogram):
         assert len(spectrogram.shape) == 2, "spectrogram must be a 2-D tensor."
 
-        distorted = spectrogram.copy()  # make a copy of input spectrogram.
+        try:
+            # for Numpy
+            distorted = spectrogram.copy()  # make a copy of input spectrogram.
+        except:
+            # for Tensor
+            distorted = spectrogram.clone()
         num_frames = spectrogram.shape[0]  # or 'tau' in the paper.
         num_freqs = spectrogram.shape[1]  # or 'miu' in the paper.
         mask_value = self.mask_value

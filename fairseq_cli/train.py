@@ -305,10 +305,22 @@ def train(
     should_stop = False
     num_updates = trainer.get_num_updates()
     logger.info("Start iterating over samples")
-    for i, samples in enumerate(progress):
+    i = 0
+    progress_iter = iter(progress)
+    while True:
+    # for i, samples in enumerate(progress):
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
         ):
+            try:
+                metrics.log_start_time("iter_wall", priority=800, round=2)
+                samples = next(progress_iter)
+                metrics.log_stop_time("iter_wall")
+                i += 1
+            except StopIteration:
+                break
+
+
             log_output = trainer.train_step(samples)
 
         if log_output is not None:  # not OOM, overflow, ...

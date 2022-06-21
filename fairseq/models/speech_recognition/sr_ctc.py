@@ -42,8 +42,8 @@ from fairseq.models.speech_recognition.conformer_encoder import SRConformerEncod
 class SRCTCConfig(FairseqDataclass):
 
     #### downsample layer config
-    # conv_kernel_sizes: str = "5,5"
-    conv_kernel_sizes: str = "5"
+    conv_kernel_sizes: str = "5,5"
+    # conv_kernel_sizes: str = "5"
     conv_channels: int = 1024
     input_feat_per_channel: int = 80
     input_channels: int = 1
@@ -125,9 +125,17 @@ class S2TCTCModel(BaseFairseqModel):
             nn.init.zeros_(self.linear.bias)
             self.dropout = torch.nn.Dropout(args.dropout)
 
-        stats_npz_path = "/mnt/data/librispeech/data4fairseq-s-rawwav/global_cmvn.npy"
+        # global cmvn
+        # stats_npz_path = "/mnt/data/librispeech/data4fairseq-s-rawwav/global_cmvn.npy"
+        stats_npz_path = "/mnt/data/GigaSpeech/tempdir/global_cmvn.npy"
         stats = np.load(stats_npz_path, allow_pickle=True).tolist()
         self.mean, self.std = stats["mean"], stats["std"]
+
+        # specaug
+        specaug_config = {"freq_mask_F": 30, "freq_mask_N": 2, "time_mask_N": 2, "time_mask_T": 40, "time_mask_p": 1.0, "time_wrap_W": 0}
+        from fairseq.data.audio.feature_transforms.specaugment import SpecAugmentTransform
+        self.specaug_transform = SpecAugmentTransform.from_config_dict(specaug_config)
+
         self._step = 0
 
     @classmethod
@@ -182,7 +190,8 @@ class S2TCTCModel(BaseFairseqModel):
             for k, v in model_file_cfg.items():
                 setattr(ssl_model_cfg, k, v)
             encoder = Wav2Vec2Model(ssl_model_cfg)
-            encoder.load_state_dict(state["model"], strict=True)
+            if args.randinit is False:
+                encoder.load_state_dict(state["model"], strict=True)
         else:
             raise NotImplemented
 
@@ -259,6 +268,9 @@ class S2TCTCModel(BaseFairseqModel):
                         features_padding = features.new(pad_len, n_mel_bins).fill_(0)
                         features = torch.cat([features, features_padding], dim=0)
                         features = features.type(source.dtype)
+                # only apply specaug during Training
+                if self.encoder.training is True:
+                    features = self.specaug_transform(features)
 
                 fbank_features.append(features)
                 fbank_lengths.append(feat_len)
