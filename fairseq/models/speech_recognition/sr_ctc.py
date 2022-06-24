@@ -245,7 +245,9 @@ class S2TCTCModel(BaseFairseqModel):
 
         fbank_lengths = []
         fbank_features = []
+        data_dtype = source.dtype
         with torch.no_grad():
+            source = source.float()
             for batch_idx in range(source.size(0)):
                 _waveform = source[batch_idx][:src_lengths[batch_idx]]
                 _waveform = _waveform * (2 ** 15)
@@ -275,7 +277,7 @@ class S2TCTCModel(BaseFairseqModel):
                 fbank_features.append(features)
                 fbank_lengths.append(feat_len)
 
-            fbank_features = torch.stack(fbank_features, dim=0).contiguous().type(source.dtype)
+            fbank_features = torch.stack(fbank_features, dim=0).contiguous().type(data_dtype)
             fbank_lengths = torch.Tensor(fbank_lengths).int().cuda()
 
         # subsampling on fbank features
