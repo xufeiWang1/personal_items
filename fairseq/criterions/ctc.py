@@ -112,7 +112,7 @@ class CtcCriterion(FairseqCriterion):
             net_output, log_probs=True
         ).contiguous()  # (T, B, C) from the encoder
 
-        if "src_lengths" in sample["net_input"]:
+        if "src_lengths" in sample["net_input"] and False:
             input_lengths = sample["net_input"]["src_lengths"]
         else:
             if net_output["padding_mask"] is not None:

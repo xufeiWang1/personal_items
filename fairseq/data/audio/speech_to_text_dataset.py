@@ -148,7 +148,7 @@ class SpeechToTextDataset(FairseqDataset):
         bpe_tokenizer=None,
         n_frames_per_step=1,
         speaker_to_id=None,
-        append_eos=True,
+        append_eos=False,
     ):
         self.split, self.is_train_split = split, is_train_split
         self.cfg = cfg

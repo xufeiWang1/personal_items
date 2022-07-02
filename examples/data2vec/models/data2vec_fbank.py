@@ -18,7 +18,7 @@ import torch.nn.functional as F
 import torch.distributed as dist
 
 from fairseq.modules import EMAModule, EMAModuleConfig
-from fairseq.data.data_utils import compute_mask_indices
+from fairseq.data.data_utils import compute_mask_indices, lengths_to_padding_mask
 from fairseq.models import BaseFairseqModel, register_model
 from fairseq.models.wav2vec import (
     ConvFeatureExtractionModel,
@@ -103,7 +103,7 @@ def get_annealed_rate(start, end, curr_step, total_steps):
 
 
 @register_model("data2vec_fbank", dataclass=Data2VecAudioConfig)
-class Data2VecAudioModel(BaseFairseqModel):
+class Data2VecFBankModel(BaseFairseqModel):
     def __init__(self, cfg: Data2VecAudioConfig):
         super().__init__()
         self.cfg = cfg
@@ -430,13 +430,19 @@ class Data2VecAudioModel(BaseFairseqModel):
 
         source = src_tokens
         metrics.log_start_time("frontend_wall", priority=800, round=2)
-        crop_length = src_lengths.min().item()
-        if src_lengths.min() != src_tokens.size(1):
-            features = source[:, :crop_length, :]
+        # during pretraining, then crop the length to be the same
+        if features_only is False:
+            crop_length = src_lengths.min().item()
+            if src_lengths.min() != src_tokens.size(1):
+                features = source[:, :crop_length, :]
+                src_lengths[:] = crop_length
+            else:
+                features = source
         else:
             features = source
         features, feature_lengths = self.subsample(features, src_lengths=src_lengths)
         features = features.transpose(0,1)
+
 
         """
         if self.use_fbank_feature is True:
@@ -514,6 +520,7 @@ class Data2VecAudioModel(BaseFairseqModel):
         )
 
         if features_only:
+            padding_mask = lengths_to_padding_mask(feature_lengths)
             return {
                 "x": x,
                 "padding_mask": padding_mask,
@@ -670,11 +677,11 @@ class Data2VecAudioModel(BaseFairseqModel):
             return torch.sqrt(y.var(dim=0) + 1e-6).mean()
 
     def extract_features(
-        self, source, padding_mask, mask=False, layer=None
+        self, src_tokens, src_lengths, prev_output_tokens=None, mask=False, layer=None
     ):
         res = self.forward(
-            source,
-            padding_mask,
+            src_tokens,
+            src_lengths,
             mask=mask,
             features_only=True,
             layer=layer,

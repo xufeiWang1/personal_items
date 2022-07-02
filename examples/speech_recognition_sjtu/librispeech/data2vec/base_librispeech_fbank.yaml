@@ -5,7 +5,7 @@ common:
   log_format: json
   log_interval: 100
   tensorboard_logdir: tb
-  wandb_project: ls-data2vec-fbank
+  # wandb_project: ls-data2vec-fbank
   user_dir: /home/chenxie95/github/fairseq/examples/data2vec
 
 checkpoint:
@@ -16,16 +16,17 @@ checkpoint:
   save_dir: /home/chenxie95/github/fairseq/outputs/data2vec/ls960_base_fbank
 
 task:
-  _name: audio_pretraining
-  data: /mnt/data/librispeech/ssl_manifest/
-  max_sample_size: 320000
-  min_sample_size: 32000
-  normalize: true
+  _name: fbank_pretraining
+  data: /mnt/data/librispeech/data4fairseq
+  config_yaml: config.yaml
+  # max_sample_size: 320000
+  # min_sample_size: 32000
+  # normalize: true
 
 dataset:
-  num_workers: 6
+  num_workers: 1
   # max_tokens: 7800000
-  max_tokens: 3800000
+  max_tokens: 80000
   # max_tokens: 1800000
   skip_invalid_size_inputs_valid_test: true
   validate_interval: 5
@@ -61,13 +62,18 @@ lr_scheduler:
   phase_ratio: [0.03,0.9,0.07]
 
 model:
-  _name: data2vec_audio
+  _name: data2vec_fbank
   extractor_mode: layer_norm
   encoder_layerdrop: 0.05
   dropout_input: 0.0
   dropout_features: 0.0
   feature_grad_mult: 1.0
   encoder_embed_dim: 768
+
+  # encoder_embed_dim: 512
+  # encoder_layers: 16
+  # encoder_ffn_embed_dim: 2048
+  # encoder_attention_heads: 8
 
   mask_prob: 0.65
   mask_length: 10

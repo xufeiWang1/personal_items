@@ -61,11 +61,16 @@ class FBankPretrainingConfig(FairseqDataclass):
     max_target_positions: int = 1024
     seed: int = 0
 
-    """
+    normalize: bool = field(
+        default=False,
+        metadata={"help": "if set, normalizes input to have 0 mean and unit variance"},
+    )
+
     labels: Optional[str] = field(
         default=None,
         metadata={"help": "extension of the label file to load, used for fine-tuning"},
     )
+    """
     binarized_dataset: bool = field(
         default=False,
         metadata={

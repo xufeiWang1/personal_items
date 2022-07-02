@@ -1,0 +1,43 @@
+# @package _group_
+
+common:
+  user_dir: /home/chenxie95/github/fairseq/examples/data2vec
+
+common_eval:
+  path: /home/chenxie95/github/fairseq/outputs/data2vec/ls960_base_audio/finetune/checkpoint158.pt
+
+dataset:
+  skip_invalid_size_inputs_valid_test: true
+  max_tokens: 50000
+  gen_subset: dev_other
+
+generation:
+  _name: null
+  criterion_name: ctc
+  type: viterbi
+
+model:
+  _name: wav2vec_ctc
+  w2v_path: /home/chenxie95/github/fairseq/outputs/data2vec/ls960_base_audio/checkpoint6.pt
+  apply_mask: true
+  mask_prob: 0.65
+  mask_channel_prob: 0.5
+  mask_channel_length: 64
+  layerdrop: 0.1
+  activation_dropout: 0.1
+  feature_grad_mult: 0.0
+  freeze_finetune_updates: 0
+
+task: 
+  _name: audio_finetuning
+  data: /mnt/data/librispeech/ssl_manifest/
+  normalize: true
+  labels: ltr
+
+criterion:
+  _name: ctc
+  zero_infinity: true
+  post_process: letter
+
+scoring:
+  _name: wer

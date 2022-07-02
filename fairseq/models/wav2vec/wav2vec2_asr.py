@@ -470,13 +470,16 @@ class Wav2VecEncoder(FairseqEncoder):
         super().set_num_updates(num_updates)
         self.num_updates = num_updates
 
-    def forward(self, source, padding_mask, **kwargs):
+    # def forward(self, source, padding_mask, **kwargs):
+    def forward(self, **w2v_args):
 
+        """
         w2v_args = {
             "source": source,
             "padding_mask": padding_mask,
             "mask": self.apply_mask and self.training,
         }
+        """
 
         ft = self.freeze_finetune_updates <= self.num_updates
 

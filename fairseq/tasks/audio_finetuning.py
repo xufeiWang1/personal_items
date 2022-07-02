@@ -217,6 +217,19 @@ class AudioFinetuningTask(AudioPretrainingTask):
 
         return model
 
+    def build_generator(
+        self,
+        models,
+        args,
+        seq_gen_cls=None,
+        extra_gen_cls_kwargs=None,
+    ):
+        if args.criterion_name == "ctc_loss" or args.criterion_name == "ctc":
+            from fairseq.infer.decoders.decoder import Decoder
+            return Decoder(args, self.target_dictionary)
+        else:
+            super().build_generator(models, args)
+
     def _inference_with_wer(self, generator, sample, model):
         import editdistance
 
