@@ -10,6 +10,7 @@ checkpoint:
   save_interval: 1
   save_interval_updates: 0
   keep_interval_updates: 10
+  keep_last_epochs: 10
   no_epoch_checkpoints: false
   best_checkpoint_metric: wer
   save_dir: /home/chenxie95/github/fairseq/outputs/data2vec/ls960_base_fbank/finetune
@@ -40,7 +41,7 @@ optimization:
   max_update: 80000
   lr: [0.0005]
   sentence_avg: true
-  update_freq: [8]
+  update_freq: [1]
 
 optimizer:
   _name: adam
