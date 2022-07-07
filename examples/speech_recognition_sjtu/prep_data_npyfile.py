@@ -41,6 +41,36 @@ log = logging.getLogger(__name__)
 
 MANIFEST_COLUMNS = ["id", "audio", "n_frames", "tgt_text", "speaker"]
 
+# accumulate the mean and square mean stats to compute mean and invstd
+def accum_cmvn_stats(features, mean_sum, square_sum, n_frame):
+    if mean_sum is None:
+        mean_sum = features.sum(axis=0)
+        square_sum = (features ** 2).sum(axis=0)
+        n_frame = features.shape[0]
+    else:
+        mean_sum += features.sum(axis=0)
+        square_sum += (features ** 2).sum(axis=0)
+        n_frame += features.shape[0]
+    return mean_sum, square_sum, n_frame
+
+def save_cmvn_stats(mean_sum, square_sum, n_frame, dirname):
+    mean = mean_sum / n_frame
+    var = square_sum / n_frame - mean ** 2
+    std = np.sqrt(np.maximum(var, 1e-8))
+    mean = mean.astype("float32")
+    std  = std.astype("float32")
+    # np.savetxt(dirname.joinpath("fbank80.mean"), mean, delimiter="\n")
+    # np.savetxt(dirname.joinpath("fbank80.std"),  std,  delimiter="\n")
+    with open(dirname.joinpath("cmvn.stats"), "w") as f_stats:
+        f_stats.write(f"{n_frame}\n")
+        for m in mean_sum:
+            f_stats.write(f"{m} ")
+        f_stats.write("\n")
+        for v in square_sum:
+            f_stats.write(f"{v} ")
+        f_stats.write("\n")
+    global_cmvn = {"mean": mean, "std": std}
+    np.save(dirname.joinpath("global_cmvn.npy"), global_cmvn)
 
 def process(args):
     args.output_root = args.output_root.replace(".", "_")
@@ -57,6 +87,11 @@ def process(args):
     prev_wavfile = None
     counter = 0
     wav_counter = -1
+
+    npy_paths = {}
+    npy_lengths = {}
+
+    mean_sum, square_sum, n_frame = None, None, 0
 
     with open(args.wavscp, "r") as f_wav:
         # extract fbank80 feature
@@ -115,11 +150,15 @@ def process(args):
                         )
 
                     if args.feat_type == "fbank":
-                        extract_fbank_features(wav_seg, args.target_sample_rate, feature_root/f"{sample_id}.npy")
+                        fbank_features = extract_fbank_features(wav_seg, args.target_sample_rate, feature_root/f"{sample_id}.npy")
+                        audio_len = fbank_features.shape[0]
+                        mean_sum, square_sum, n_frame = accum_cmvn_stats(fbank_features, mean_sum, square_sum, n_frame)
+
                     elif args.feat_type == "rawwav":
                         # wav_seg: [1, N] -> [N, 1]
                         wav_seg = wav_seg.transpose(0, 1)
                         np.save(feature_root/f"{sample_id}.npy", wav_seg)
+                        audio_len = wav.shape[0]
                     else:
                         raise NotImplementedError
 
@@ -138,17 +177,24 @@ def process(args):
                 sample_rate = args.target_sample_rate
 
                 if args.feat_type == "fbank":
-                    extract_fbank_features(wav, sample_rate, feature_root/f"{sample_id}.npy")
+                    fbank_features = extract_fbank_features(wav, sample_rate, feature_root/f"{sample_id}.npy")
+                    audio_len = fbank_features.shape[0]
+                    mean_sum, square_sum, n_frame = accum_cmvn_stats(fbank_features, mean_sum, square_sum, n_frame)
                 elif args.feat_type == "rawwav":
                     # wav_seg: [1, N] -> [N, 1]
                     wav = wav.transpose(0, 1)
                     np.save(feature_root/f"{sample_id}.npy", wav)
+                    audio_len = wav.shape[0]
+
+            npy_paths[sample_id] = feature_root/f"{sample_id}.npy"
+            npy_lengths[sample_id] = audio_len
 
 
             sent = ' '.join(line.split()[1:]).strip()
             id2txt[sample_id] = sent
             sample_ids.append(sample_id)
 
+        """
         if args.feat_type == "fbank":
             zip_path = out_root / f"{args.prefix}-fbank80.zip"
         elif args.feat_type == "rawwav":
@@ -157,13 +203,16 @@ def process(args):
         create_zip(feature_root, zip_path)
         print ("Fetching ZIP manifest...")
         audio_paths, audio_lengths = get_zip_manifest(zip_path)
+        """
 
         manifest = {c: [] for c in MANIFEST_COLUMNS}
         for sample_id in sample_ids:
             spk_id = sample_id.split('_')[0]
             manifest["id"].append(sample_id)
-            manifest["audio"].append(audio_paths[sample_id])
-            manifest["n_frames"].append(audio_lengths[sample_id])
+            # manifest["audio"].append(audio_paths[sample_id])
+            # manifest["n_frames"].append(audio_lengths[sample_id])
+            manifest["audio"].append(npy_paths[sample_id])
+            manifest["n_frames"].append(npy_lengths[sample_id])
             manifest["tgt_text"].append(id2txt[sample_id])
             manifest["speaker"].append(spk_id)
 
@@ -176,9 +225,9 @@ def process(args):
 
         # compute global CMVN
         if args.for_train:
-            print ("Computing global cmvn stats")
-            mean, std = compute_cmvn_stats(zip_path)
-            print ("Generating manifest...")
+            print ("Computing global cmvn stats ...")
+            # mean, std = compute_cmvn_stats(zip_path)
+            save_cmvn_stats(mean_sum, square_sum, n_frame, out_root)
 
         # Generate vocab
         if args.for_train:
@@ -191,6 +240,7 @@ def process(args):
             else:
                 vocab_size = "" if args.vocab_type == "char" else str(args.vocab_size)
                 spm_filename_prefix = f"spm_{args.vocab_type}{vocab_size}"
+                spm_filename = f"{spm_filename_prefix}.model"
                 with NamedTemporaryFile(mode="w") as f:
                     for t in manifest["tgt_text"]:
                         f.write(t + "\n")
@@ -213,7 +263,7 @@ def process(args):
                 bpe_type=bpe_type
             )
         # Clean up
-        shutil.rmtree(feature_root)
+        # shutil.rmtree(feature_root)
 
 
         # post-processing: collect and merge cmvn
@@ -275,7 +325,6 @@ def process(args):
                 else:
                     vocab_size = "" if args.vocab_type == "char" else str(args.vocab_size)
                     spm_filename_prefix = f"spm_{args.vocab_type}{vocab_size}"
-                    spm_filename = f"{spm_filename_prefix}.model"
                     with NamedTemporaryFile(mode="w") as f:
                         for t in df["tgt_text"]:
                             f.write(t + "\n")
