@@ -147,6 +147,7 @@ def gen_config_yaml(
     cmvn_type: str = "utterance",
     gcmvn_path: Optional[Path] = None,
     bpe_type: str = "sentencepiece",
+    vocab_type: Optional[str] = None,
     extra=None
 ):
     manifest_root = manifest_root.absolute()
@@ -169,7 +170,17 @@ def gen_config_yaml(
     if specaugment_setter is not None:
         specaugment_setter()
     if spm_filename is not None:
-        writer.set_bpe_tokenizer(
+        if vocab_type is not None:
+            writer.set_bpe_tokenizer(
+            {
+                "bpe": bpe_type,
+                "sentencepiece_model": (manifest_root / spm_filename).as_posix(),
+                "vocab_type": vocab_type
+            }
+        )
+
+        else:
+            writer.set_bpe_tokenizer(
             {
                 "bpe": bpe_type,
                 "sentencepiece_model": (manifest_root / spm_filename).as_posix(),
@@ -241,6 +252,51 @@ def load_tsv_to_dicts(path: Union[str, Path]) -> List[dict]:
         )
         rows = [dict(e) for e in reader]
     return rows
+
+def convert_to_subwords(id2txt, args):
+    import sentencepiece as spm
+    # load sentencepiece model if spm used as unit
+    if args.vocab_type == "eng_spm":
+        assert args.spm_model != ""
+        sp_model= spm.SentencePieceProcessor()
+        sp_model.Load(args.spm_model)
+    else:
+        sp_model = None
+    # convert sentence to subwords, for different languages
+    for sample_id in id2txt.keys():
+        text = id2txt[sample_id].strip()
+
+        # e.g. HELLO WORLD -> _HE LLO _WOR LD
+        if args.vocab_type == "eng_spm":
+            sps = sp_model.Encode(text, out_type=str)
+            sp_text = ' '.join(sps).replace("\u2581", "_").strip()
+            id2txt[sample_id] = sp_text
+        # e.g. HELLO WORLD -> H E L L | W O R L D |
+        elif args.vocab_type == "eng_char":
+            text_w_boundary = text.replace(' ', '|')
+            char_text = " ".join([c for c in text_w_boundary ])
+            id2txt[sample_id] = char_text
+        # 你好 -> 你 好
+        elif args.vocab_type == "chn_char":
+            char_text = " ".join([w for w in text])
+            id2txt[sample_id] = char_text
+
+    return id2txt
+
+
+def gen_vocab_to_file(tgt_texts, out_filename, voc_size):
+    word2cnt = {}
+    for t in tgt_texts:
+        for word in t.split():
+            if word in word2cnt:
+                word2cnt[word] += 1
+            else:
+                word2cnt[word] = 1
+    sorted_wordcnts = sorted(word2cnt.items(), key=lambda x: x[1], reverse=True)
+    with open (out_filename, 'w') as f_voc:
+        for (word, cnt) in sorted_wordcnts[:voc_size]:
+            f_voc.write(f"{word} {cnt}\n")
+
 
 
 def save_chnchar_to_file(tgt_texts, out_filename, voc_size):
@@ -394,9 +450,9 @@ class S2TDataConfigWriter(object):
         self.set_specaugment(
             time_wrap_w=0,
             freq_mask_n=2,
-            freq_mask_f=27,
+            freq_mask_f=30,
             time_mask_n=2,
-            time_mask_t=100,
+            time_mask_t=40,
             time_mask_p=1.0,
         )
 

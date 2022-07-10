@@ -184,6 +184,24 @@ class SpeechToTextDataset(FairseqDataset):
         self.tgt_lens = self.get_tgt_lens_and_check_oov()
         self.append_eos = append_eos
 
+        if self.cfg.config.get("datatype", None) == "hdf5":
+            self.datatype = "hdf5"
+            import h5py
+            self.f_hdf5 = h5py.File(self.audio_paths[0], 'r')
+        elif self.cfg.config.get("datatype", None) == "lmdb":
+            self.datatype = "lmdb"
+            import lmdb
+            self.env = lmdb.open(self.audio_paths[0], map_size=1099511627776)
+            self.txn = self.env.begin(write=False)
+        else:
+            self.datatype = None
+
+        self.buffer_size = self.cfg.config.get("buffer_size", 100000)
+        # self.buffer_size = self.cfg.config.get("buffer_size", 0)
+        if not is_train_split:
+            self.buffer_size = 0
+        self.local_epoch, self.global_epoch = 0, 0
+
         logger.info(self.__repr__())
 
     def get_tgt_lens_and_check_oov(self):
@@ -203,6 +221,79 @@ class SpeechToTextDataset(FairseqDataset):
             tgt_lens.append(len(tokenized))
         logger.info(f"'{self.split}' has {n_oov_tokens / n_tokens * 100:.2f}% OOV")
         return tgt_lens
+
+    def set_buffer(self):
+        # only apply buffer when buffer_size > 0 and datatype is lmdb
+        if self.buffer_size == 0 or self.datatype != "lmdb":
+            return
+
+        if self.local_epoch == 0:
+            self.full_audio_paths = self.audio_paths
+            self.full_n_frames    = self.n_frames
+            self.full_n_samples   = self.n_samples
+            self.full_src_texts   = self.src_texts
+            self.full_tgt_texts   = self.tgt_texts
+            self.full_ids         = self.ids
+            self.full_speakers    = self.speakers
+            self.full_tgt_lens    = self.tgt_lens
+
+            self.full_id2index = {fileid:index for index,fileid in enumerate(self.full_ids)}
+            self.txt_cur_iter = iter(self.txn.cursor())
+
+        self.source_list = []
+
+        self.audio_paths = []
+        self.n_frames    = []
+        self.src_texts = []
+        self.tgt_texts = []
+        self.ids       = []
+        self.speakers  = []
+        self.tgt_lens  = []
+
+        counter = 0
+        self.list_indices = []
+        while counter < self.buffer_size:
+            try:
+                key, value = next(self.txt_cur_iter)
+                key = key.decode('utf-8')
+                value = np.frombuffer(value, dtype="float32").reshape(-1, 80)
+                # value = torch.from_numpy(value).float()
+                self.source_list.append(np.copy(value))
+                index = self.full_id2index[key]
+
+                self.list_indices.append(index)
+
+                """
+                self.audio_paths.append(self.full_audio_paths[index])
+                self.n_frames.append(self.full_n_frames[index])
+                self.src_texts.append(self.full_src_texts[index])
+                self.tgt_texts.append(self.full_tgt_texts[index])
+                self.ids.append(self.full_ids[index])
+                self.speakers.append(self.full_speakers[index])
+                self.tgt_lens.append(self.full_tgt_lens[index])
+                """
+                counter += 1
+
+            except StopIteration:
+                self.txt_cur_iter = iter(self.txn.cursor())
+                self.global_epoch += 1
+
+        self.audio_path = [self.full_audio_paths[i] for i in self.list_indices]
+        self.n_frames = [self.full_n_frames[i] for i in self.list_indices]
+        self.src_texts = [self.full_src_texts[i] for i in self.list_indices]
+        self.tgt_texts = [self.full_tgt_texts[i] for i in self.list_indices]
+        self.ids = [self.full_ids[i] for i in self.list_indices]
+        self.speakers = [self.full_speakers[i] for i in self.list_indices]
+        self.tgt_lens = [self.full_tgt_lens[i] for i in self.list_indices]
+
+        self.n_samples = self.buffer_size
+        assert len(self.ids) == self.n_samples
+        self.local_epoch += 1
+
+
+
+
+
 
     def __repr__(self):
         return (
@@ -266,8 +357,21 @@ class SpeechToTextDataset(FairseqDataset):
         return source
 
     def __getitem__(self, index: int) -> SpeechToTextDatasetItem:
-        source = self._get_source_audio(index)
-        source = self.pack_frames(source)
+        if self.datatype == "lmdb" and self.buffer_size > 0:
+            source = self.source_list[index]
+            source = torch.from_numpy(source).float()
+        elif self.datatype == "hdf5":
+            fileid = self.ids[index]
+            source = np.array(self.f_hdf5[fileid])
+            source = torch.from_numpy(source).float()
+        elif self.datatype == "lmdb":
+            fileid = self.ids[index]
+            source = self.txn.get(fileid.encode())
+            source = np.frombuffer(source, dtype="float32").reshape(-1, 80)
+            source = torch.from_numpy(source).float()
+        else:
+            source = self._get_source_audio(index)
+            source = self.pack_frames(source)
 
         target = None
         if self.tgt_texts is not None:
@@ -370,6 +474,8 @@ class SpeechToTextDataset(FairseqDataset):
 
     @property
     def can_reuse_epoch_itr_across_epochs(self):
+        if self.buffer_size > 0 and self.is_train_split:
+            return False
         return True
 
     def ordered_indices(self):

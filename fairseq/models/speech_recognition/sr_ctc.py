@@ -125,16 +125,16 @@ class S2TCTCModel(BaseFairseqModel):
             nn.init.zeros_(self.linear.bias)
             self.dropout = torch.nn.Dropout(args.dropout)
 
-        # global cmvn
-        # stats_npz_path = "/mnt/data/librispeech/data4fairseq-s-rawwav/global_cmvn.npy"
-        stats_npz_path = "/mnt/data/GigaSpeech/tempdir/global_cmvn.npy"
-        stats = np.load(stats_npz_path, allow_pickle=True).tolist()
-        self.mean, self.std = stats["mean"], stats["std"]
+            # global cmvn
+            # stats_npz_path = "/mnt/data/librispeech/data4fairseq-s-rawwav/global_cmvn.npy"
+            stats_npz_path = "/mnt/data/GigaSpeech/tempdir/global_cmvn.npy"
+            stats = np.load(stats_npz_path, allow_pickle=True).tolist()
+            self.mean, self.std = stats["mean"], stats["std"]
 
-        # specaug
-        specaug_config = {"freq_mask_F": 30, "freq_mask_N": 2, "time_mask_N": 2, "time_mask_T": 40, "time_mask_p": 1.0, "time_wrap_W": 0}
-        from fairseq.data.audio.feature_transforms.specaugment import SpecAugmentTransform
-        self.specaug_transform = SpecAugmentTransform.from_config_dict(specaug_config)
+            # specaug
+            specaug_config = {"freq_mask_F": 30, "freq_mask_N": 2, "time_mask_N": 2, "time_mask_T": 40, "time_mask_p": 1.0, "time_wrap_W": 0}
+            from fairseq.data.audio.feature_transforms.specaugment import SpecAugmentTransform
+            self.specaug_transform = SpecAugmentTransform.from_config_dict(specaug_config)
 
         self._step = 0
 

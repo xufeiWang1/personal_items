@@ -32,6 +32,10 @@ class EpochListening:
         pass
 
 
+    def set_buffer(self):
+        pass
+
+
 class FairseqDataset(torch.utils.data.Dataset, EpochListening):
     """A dataset that provides helpers for batching."""
 

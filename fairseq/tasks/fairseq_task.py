@@ -281,6 +281,8 @@ class FairseqTask(object):
         # initialize the dataset with the correct starting epoch
         dataset.set_epoch(epoch)
 
+        dataset.set_buffer()
+
         # get indices ordered by example size
         with data_utils.numpy_seed(seed):
             indices = dataset.ordered_indices()
