@@ -11,6 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
+import random
 
 import numpy as np
 import torch
@@ -30,8 +31,29 @@ from fairseq.data.audio.audio_utils import (
 from fairseq.data.audio.data_cfg import S2TDataConfig
 from fairseq.data.audio.feature_transforms import CompositeAudioFeatureTransform
 
+import glob
+
 logger = logging.getLogger(__name__)
 
+
+def read_int_from_binfile(f):
+    n_bytes = f.read(4)
+    n = int.from_bytes(n_bytes, byteorder="little")
+    return n
+
+def read_str_from_binfile(f):
+    str_len = read_int_from_binfile(f)
+    if str_len == 0:
+        return None
+    string = f.read(str_len).decode()
+    return string
+
+def read_numpy_from_binfile(f):
+    mat_len = read_int_from_binfile(f)
+    mat_dim = read_int_from_binfile(f)
+    mat_bytes = f.read(mat_len)
+    mat = np.frombuffer(mat_bytes, dtype=np.float32).reshape(-1, mat_dim)
+    return mat
 
 def get_features_from_npy_or_audio(path):
     ext = Path(path).suffix
@@ -184,15 +206,21 @@ class SpeechToTextDataset(FairseqDataset):
         self.tgt_lens = self.get_tgt_lens_and_check_oov()
         self.append_eos = append_eos
 
-        if self.cfg.config.get("datatype", None) == "hdf5":
+        self.datatype = self.cfg.config.get("datatype", None)
+        if self.datatype == "hdf5":
             self.datatype = "hdf5"
             import h5py
             self.f_hdf5 = h5py.File(self.audio_paths[0], 'r')
-        elif self.cfg.config.get("datatype", None) == "lmdb":
+        elif self.datatype == "lmdb":
             self.datatype = "lmdb"
             import lmdb
             self.env = lmdb.open(self.audio_paths[0], map_size=1099511627776)
             self.txn = self.env.begin(write=False)
+        elif self.datatype == "bin":
+            self.bin_dirpath = Path(self.audio_paths[0]).parent
+            self.bin_filelist = glob.glob(str(self.bin_dirpath) + "/*.bin")
+            self.file_index = 0
+            self.num_bin_file = len(self.bin_filelist)
         else:
             self.datatype = None
 
@@ -224,7 +252,7 @@ class SpeechToTextDataset(FairseqDataset):
 
     def set_buffer(self):
         # only apply buffer when buffer_size > 0 and datatype is lmdb
-        if self.buffer_size == 0 or self.datatype != "lmdb":
+        if self.buffer_size == 0 or (self.datatype not in ["lmdb", "bin"]):
             return
 
         if self.local_epoch == 0:
@@ -238,7 +266,11 @@ class SpeechToTextDataset(FairseqDataset):
             self.full_tgt_lens    = self.tgt_lens
 
             self.full_id2index = {fileid:index for index,fileid in enumerate(self.full_ids)}
-            self.txt_cur_iter = iter(self.txn.cursor())
+            if self.datatype == "lmdb":
+                self.txn_cur_iter = iter(self.txn.cursor())
+            elif self.datatype == "bin":
+                self.file_bin = open(self.bin_filelist[0], "rb")
+                self.file_index = 0
 
         self.source_list = []
 
@@ -254,11 +286,19 @@ class SpeechToTextDataset(FairseqDataset):
         self.list_indices = []
         while counter < self.buffer_size:
             try:
-                key, value = next(self.txt_cur_iter)
-                key = key.decode('utf-8')
-                value = np.frombuffer(value, dtype="float32").reshape(-1, 80)
-                # value = torch.from_numpy(value).float()
-                self.source_list.append(np.copy(value))
+                if self.datatype == "lmdb":
+                    key, value = next(self.txn_cur_iter)
+                    key = key.decode('utf-8')
+                    value = np.frombuffer(value, dtype="float32").reshape(-1, 80)
+                    # value = torch.from_numpy(value).float()
+                    self.source_list.append(np.copy(value))
+                elif self.datatype == "bin":
+                    key = read_str_from_binfile(self.file_bin)
+                    if key is None:
+                        raise StopIteration
+                    value = read_numpy_from_binfile(self.file_bin)
+                    self.source_list.append(np.copy(value))
+
                 index = self.full_id2index[key]
 
                 self.list_indices.append(index)
@@ -275,10 +315,18 @@ class SpeechToTextDataset(FairseqDataset):
                 counter += 1
 
             except StopIteration:
-                self.txt_cur_iter = iter(self.txn.cursor())
-                self.global_epoch += 1
+                if self.datatype == "lmdb":
+                    self.txn_cur_iter = iter(self.txn.cursor())
+                elif self.datatype == "bin":
+                    self.file_bin.close()
+                    self.file_index = (self.file_index + 1 ) % self.num_bin_file
+                    # shuffle the bin file list after one sweep
+                    if self.file_index == 0:
+                        random.shuffle(self.file_index)
+                        self.global_epoch += 1
+                    self.file_bin = open(self.bin_filelist[self.file_index], "rb")
 
-        self.audio_path = [self.full_audio_paths[i] for i in self.list_indices]
+        self.audio_paths = [self.full_audio_paths[i] for i in self.list_indices]
         self.n_frames = [self.full_n_frames[i] for i in self.list_indices]
         self.src_texts = [self.full_src_texts[i] for i in self.list_indices]
         self.tgt_texts = [self.full_tgt_texts[i] for i in self.list_indices]
@@ -289,11 +337,6 @@ class SpeechToTextDataset(FairseqDataset):
         self.n_samples = self.buffer_size
         assert len(self.ids) == self.n_samples
         self.local_epoch += 1
-
-
-
-
-
 
     def __repr__(self):
         return (
@@ -357,7 +400,7 @@ class SpeechToTextDataset(FairseqDataset):
         return source
 
     def __getitem__(self, index: int) -> SpeechToTextDatasetItem:
-        if self.datatype == "lmdb" and self.buffer_size > 0:
+        if self.datatype in ["lmdb", "bin"] and self.buffer_size > 0:
             source = self.source_list[index]
             source = torch.from_numpy(source).float()
         elif self.datatype == "hdf5":
