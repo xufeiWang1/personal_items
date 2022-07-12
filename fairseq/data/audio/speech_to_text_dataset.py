@@ -252,7 +252,7 @@ class SpeechToTextDataset(FairseqDataset):
 
     def set_buffer(self):
         # only apply buffer when buffer_size > 0 and datatype is lmdb
-        if self.buffer_size == 0 or (self.datatype not in ["lmdb", "bin"]):
+        if self.datatype not in ["lmdb", "bin"]:
             return
 
         if self.local_epoch == 0:
@@ -284,7 +284,7 @@ class SpeechToTextDataset(FairseqDataset):
 
         counter = 0
         self.list_indices = []
-        while counter < self.buffer_size:
+        while (counter < self.buffer_size) or (self.buffer_size == 0):
             try:
                 if self.datatype == "lmdb":
                     key, value = next(self.txn_cur_iter)
@@ -322,9 +322,12 @@ class SpeechToTextDataset(FairseqDataset):
                     self.file_index = (self.file_index + 1 ) % self.num_bin_file
                     # shuffle the bin file list after one sweep
                     if self.file_index == 0:
-                        random.shuffle(self.file_index)
+                        random.shuffle(self.bin_filelist)
                         self.global_epoch += 1
                     self.file_bin = open(self.bin_filelist[self.file_index], "rb")
+                    # for valid set
+                    if self.buffer_size == 0:
+                        break
 
         self.audio_paths = [self.full_audio_paths[i] for i in self.list_indices]
         self.n_frames = [self.full_n_frames[i] for i in self.list_indices]
@@ -334,8 +337,7 @@ class SpeechToTextDataset(FairseqDataset):
         self.speakers = [self.full_speakers[i] for i in self.list_indices]
         self.tgt_lens = [self.full_tgt_lens[i] for i in self.list_indices]
 
-        self.n_samples = self.buffer_size
-        assert len(self.ids) == self.n_samples
+        self.n_samples = len(self.ids)
         self.local_epoch += 1
 
     def __repr__(self):
@@ -400,7 +402,7 @@ class SpeechToTextDataset(FairseqDataset):
         return source
 
     def __getitem__(self, index: int) -> SpeechToTextDatasetItem:
-        if self.datatype in ["lmdb", "bin"] and self.buffer_size > 0:
+        if self.datatype in ["lmdb", "bin"]:
             source = self.source_list[index]
             source = torch.from_numpy(source).float()
         elif self.datatype == "hdf5":
