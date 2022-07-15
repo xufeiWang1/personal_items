@@ -146,6 +146,12 @@ class FairseqTask(object):
         """
         raise NotImplementedError
 
+    def get_global_epoch(self):
+        return 0, 0
+
+    def use_bin_file(self):
+        return False
+
     def dataset(self, split):
         """
         Return a loaded dataset split.

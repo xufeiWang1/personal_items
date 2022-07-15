@@ -93,6 +93,17 @@ class SpeechRecognitionTask(FairseqTask):
             speaker_to_id=self.speaker_to_id,
         )
 
+    def get_global_epoch(self):
+        for name, ds in self.datasets.items():
+            if ds.is_train_split:
+                return ds.global_epoch, ds.global_update
+
+    def use_bin_file(self):
+        if self.datasets[0].datatype == "bin":
+            return True
+        return False
+
+
     @property
     def target_dictionary(self):
         return self.tgt_dict
