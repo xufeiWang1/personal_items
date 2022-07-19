@@ -313,11 +313,6 @@ def train(
             "train_step-%d" % i
         ):
 
-            if task.use_bin_file:
-                global_epoch, global_update = task.get_global_epoch()
-                metrics.log_scalar("global_epoch",  global_epoch, priority=1)
-                metrics.log_scalar("global_update", global_update, priority=1, round=2)
-
             try:
                 metrics.log_start_time("iter_wall", priority=800, round=2)
                 samples = next(progress_iter)

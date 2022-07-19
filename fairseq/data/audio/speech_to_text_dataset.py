@@ -208,6 +208,7 @@ class SpeechToTextDataset(FairseqDataset):
         self.append_eos = append_eos
 
         self.datatype = self.cfg.config.get("datatype", None)
+        self.read_bin_file_no_shuffle = False
         if self.datatype == "hdf5":
             self.datatype = "hdf5"
             import h5py
@@ -223,6 +224,7 @@ class SpeechToTextDataset(FairseqDataset):
             self.file_index = 0
             self.num_bin_file = len(self.bin_filelist)
         elif self.datatype == "bin_offset":
+            self.read_bin_file_no_shuffle = self.cfg.config.get("read_bin_file_no_shuffle", True)
             pass
         else:
             self.datatype = None
@@ -231,7 +233,7 @@ class SpeechToTextDataset(FairseqDataset):
         # self.buffer_size = self.cfg.config.get("buffer_size", 0)
         if not is_train_split:
             self.buffer_size = 0
-        self.local_epoch, self.global_epoch = 0, 0
+        self.local_epoch, self.global_epoch = 1, 1
         self.global_update = 0
 
         logger.info(self.__repr__())
@@ -259,7 +261,7 @@ class SpeechToTextDataset(FairseqDataset):
         if self.datatype not in ["lmdb", "bin"]:
             return
 
-        if self.local_epoch == 0:
+        if self.local_epoch == 1:
             self.full_audio_paths = self.audio_paths
             self.full_n_frames    = self.n_frames
             self.full_n_samples   = self.n_samples
@@ -275,7 +277,9 @@ class SpeechToTextDataset(FairseqDataset):
         if self.datatype == "lmdb":
             self.txn_cur_iter = iter(self.txn.cursor())
         elif self.datatype == "bin":
-            self.file_bin = open(self.bin_filelist[self.file_index], "rb")
+            file_bin = open(self.bin_filelist[self.file_index], "rb")
+
+        self.source_list, self.audio_paths, self.n_frames, self.src_texts, self.tgt_texts, self.ids, self.speakers, self.tgt_lens = None, None, None, None, None, None, None, None
 
         self.source_list = []
 
@@ -298,17 +302,16 @@ class SpeechToTextDataset(FairseqDataset):
                     # value = torch.from_numpy(value).float()
                     self.source_list.append(np.copy(value))
                 elif self.datatype == "bin":
-                    key = read_str_from_binfile(self.file_bin)
+                    key = read_str_from_binfile(file_bin)
                     if key is None:
                         raise StopIteration
-                    value = read_numpy_from_binfile(self.file_bin)
+                    value = read_numpy_from_binfile(file_bin)
                     self.source_list.append(np.copy(value))
 
                 index = self.full_id2index[key]
 
                 self.list_indices.append(index)
 
-                """
                 self.audio_paths.append(self.full_audio_paths[index])
                 self.n_frames.append(self.full_n_frames[index])
                 self.src_texts.append(self.full_src_texts[index])
@@ -316,28 +319,28 @@ class SpeechToTextDataset(FairseqDataset):
                 self.ids.append(self.full_ids[index])
                 self.speakers.append(self.full_speakers[index])
                 self.tgt_lens.append(self.full_tgt_lens[index])
-                """
 
             except StopIteration:
                 counter += 1
                 # for valid set
                 if self.buffer_size == 0 or counter >= self.buffer_size:
-                    self.file_bin.close()
-                    self.file_bin = None
+                    file_bin.close()
+                    file_bin = None
                     break
 
                 if self.datatype == "lmdb":
                     self.txn_cur_iter = iter(self.txn.cursor())
                 elif self.datatype == "bin":
-                    self.file_bin.close()
+                    file_bin.close()
                     self.global_update = self.file_index * 1.0 / self.num_bin_file
                     self.file_index = (self.file_index + 1 ) % self.num_bin_file
                     # shuffle the bin file list after one sweep
                     if self.file_index == 0:
                         random.shuffle(self.bin_filelist)
                         self.global_epoch += 1
-                    self.file_bin = open(self.bin_filelist[self.file_index], "rb")
+                    file_bin = open(self.bin_filelist[self.file_index], "rb")
 
+        """
         self.audio_paths = [self.full_audio_paths[i] for i in self.list_indices]
         self.n_frames = [self.full_n_frames[i] for i in self.list_indices]
         self.src_texts = [self.full_src_texts[i] for i in self.list_indices]
@@ -345,6 +348,7 @@ class SpeechToTextDataset(FairseqDataset):
         self.ids = [self.full_ids[i] for i in self.list_indices]
         self.speakers = [self.full_speakers[i] for i in self.list_indices]
         self.tgt_lens = [self.full_tgt_lens[i] for i in self.list_indices]
+        """
 
         self.n_samples = len(self.ids)
         self.local_epoch += 1
@@ -410,7 +414,6 @@ class SpeechToTextDataset(FairseqDataset):
             source = torch.from_numpy(source).float()
         return source
 
-    @lru_cache(maxsize=8)
     def __getitem__(self, index: int) -> SpeechToTextDatasetItem:
         if self.datatype in ["lmdb", "bin"]:
             source = self.source_list[index]
@@ -425,7 +428,7 @@ class SpeechToTextDataset(FairseqDataset):
             source = np.frombuffer(source, dtype="float32").reshape(-1, 80)
             source = torch.from_numpy(source).float()
         elif self.datatype == "bin_offset":
-            if True:
+            if self.read_bin_file_no_shuffle is False:
                 file_with_offset = self.audio_paths[index]
                 binfile = file_with_offset.split(":")[0]
                 offset = int(file_with_offset.split(":")[1])
@@ -472,19 +475,50 @@ class SpeechToTextDataset(FairseqDataset):
             return {}
         indices = torch.tensor([x.index for x in samples], dtype=torch.long)
 
-        if False and self.datatype == "bin_offset":
+        if (self.read_bin_file_no_shuffle is True) and self.datatype == "bin_offset":
+            prev_binfile = None
+            file_bin = None
+            for idx, x in enumerate(samples):
+                binfile = self.audio_paths[x.index].split(":")[0]
+                if binfile != prev_binfile:
+                    if file_bin is not None:
+                        file_bin.close()
+                        file_bin = None
+                    offset  = int(self.audio_paths[x.index].split(":")[1])
+                    file_bin = open(binfile, "rb")
+                    file_bin.seek(offset)
+                    prev_binfile = binfile
+
+                key = read_str_from_binfile(file_bin)
+                source = read_numpy_from_binfile(file_bin)
+                source = np.copy(source)
+                x.source = torch.from_numpy(source).float()
+
+            if file_bin is not None:
+                file_bin.close()
+                file_bin = None
+
+            """
             binfile = self.audio_paths[0].split(":")[0]
             file_bin = open(binfile, "rb")
-            for x in samples:
-                file_with_offset = self.audio_paths[x.index]
-                offset = int(file_with_offset.split(":")[1])
-                file_bin.seek(offset)
+            for idx, x in enumerate(samples):
+                if False:
+                    file_with_offset = self.audio_paths[x.index]
+                    offset = int(file_with_offset.split(":")[1])
+                    file_bin.seek(offset)
+                else:
+                    if idx == 0:
+                        file_with_offset = self.audio_paths[x.index]
+                        offset = int(file_with_offset.split(":")[1])
+                        file_bin.seek(offset)
+
                 key = read_str_from_binfile(file_bin)
                 source = read_numpy_from_binfile(file_bin)
                 source = np.copy(source)
                 x.source = torch.from_numpy(source).float()
             file_bin.close()
             file_bin = None
+            """
 
         frames = _collate_frames([x.source for x in samples], self.cfg.use_audio_input)
         # sort samples by descending number of frames
@@ -564,6 +598,10 @@ class SpeechToTextDataset(FairseqDataset):
         return True
 
     def ordered_indices(self):
+        # keep the original order for bin_offset data
+        if self.datatype == "bin_offset" and (self.read_bin_file_no_shuffle is True):
+            return np.arange(len(self), dtype=np.int64)
+
         if self.shuffle:
             order = [np.random.permutation(len(self))]
             order.append(np.random.permutation(len(self)))
