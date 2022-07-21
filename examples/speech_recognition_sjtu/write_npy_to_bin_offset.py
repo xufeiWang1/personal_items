@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 import random, string
 import time
 from mpi4py import MPI
+import sys
 
 # copy from data_utils in fairseq
 def load_tsv_to_dicts(path: Union[str, Path]) -> List[dict]:
@@ -108,6 +109,10 @@ def main():
     rank = comm.Get_rank()
     world_size = comm.Get_size()
 
+    if rank == 0:
+        from examples.speech_recognition_sjtu.utils import cacheCommands
+        cacheCommands(sys.argv)
+
     out_root = Path(args.outdir)
     if world_size > 1:
         out_root = out_root.with_suffix(f".rank{rank}")
@@ -186,6 +191,16 @@ def main():
             save_df_to_tsv(df, args.outtsvfile)
 
 
+    if rank == 0:
+        configfile = Path(args.npytsvfile).parent.joinpath("config.yaml")
+        if configfile.exists():
+            import yaml
+            out_configfile = Path(args.outtsvfile).parent.joinpath("config_bin.yaml")
+            with open(configfile, "r") as f_in, open(out_configfile, "w") as f_out:
+                dict_config = yaml.safe_load(f_in)
+                dict_config["datatype"] = "bin_offset"
+                dict_config["read_bin_file_no_shuffle"] = True
+                yaml.dump(dict_config, f_out)
 
 
 

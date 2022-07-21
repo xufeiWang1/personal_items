@@ -541,6 +541,9 @@ def cli_main(
 
     cfg = convert_namespace_to_omegaconf(args)
 
+    from examples.speech_recognition_sjtu.utils import cacheCommands
+    cacheCommands(sys.argv)
+
     if cfg.common.use_plasma_view:
         server = PlasmaStore(path=cfg.common.plasma_path)
         logger.info(

@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-
+import sys
 import argparse
 import logging
 from pathlib import Path
@@ -82,6 +82,9 @@ def process(args):
     out_root.mkdir(exist_ok=True)
     # Extract features
     feature_root = out_root / f"{args.prefix}-fbank80"
+    if feature_root.exists():
+        print (f"Error: target feature dir: {feature_root} exists, please double check!")
+        raise ValueError
     feature_root.mkdir(exist_ok=True)
 
     id2txt = {}
@@ -312,6 +315,10 @@ def main():
     parser.add_argument("--target-sample-rate", default=16000, type=int)
     parser.add_argument("--speed", default=1.0, type=float)
     args = parser.parse_args()
+
+    if rank == 0:
+        from examples.speech_recognition_sjtu.utils import cacheCommands
+        cacheCommands(sys.argv)
 
     process(args)
 
