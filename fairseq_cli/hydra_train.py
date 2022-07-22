@@ -6,6 +6,7 @@
 
 import logging
 import os
+import sys
 
 import hydra
 import torch
@@ -84,6 +85,10 @@ def cli_main():
         cfg_name = "config"
 
     hydra_init(cfg_name)
+
+    from examples.speech_recognition_sjtu.utils import cacheCommands
+    cacheCommands(sys.argv)
+
     hydra_main()
 
 

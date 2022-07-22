@@ -429,7 +429,9 @@ class Data2VecFBankModel(BaseFairseqModel):
     ):
 
         source = src_tokens
+        """
         metrics.log_start_time("frontend_wall", priority=800, round=2)
+        """
         # during pretraining, then crop the length to be the same
         if features_only is False:
             crop_length = src_lengths.min().item()
@@ -496,9 +498,11 @@ class Data2VecFBankModel(BaseFairseqModel):
 
         features = self.dropout_input(features)
 
+        """
         torch.cuda.synchronize()
         metrics.log_stop_time("frontend_wall")
         metrics.log_start_time("mask_wall", priority=800, round=2)
+        """
         if mask:
             x, mask_indices = self.apply_mask(
                 features,
@@ -509,9 +513,11 @@ class Data2VecFBankModel(BaseFairseqModel):
         else:
             x = features
             mask_indices = None
+        """
         torch.cuda.synchronize()
         metrics.log_stop_time("mask_wall")
         metrics.log_start_time("s_fwd_wall", priority=800, round=2)
+        """
 
         x, layer_results = self.encoder(
             x,
@@ -531,9 +537,11 @@ class Data2VecFBankModel(BaseFairseqModel):
             "losses": {},
         }
 
+        """
         torch.cuda.synchronize()
         metrics.log_stop_time("s_fwd_wall")
         metrics.log_start_time("t_fwd_wall", priority=800, round=2)
+        """
 
         with torch.no_grad():
             self.ema.model.eval()
@@ -556,9 +564,11 @@ class Data2VecFBankModel(BaseFairseqModel):
                     mask=False,
                 )
 
+            """
             torch.cuda.synchronize()
             metrics.log_stop_time("t_fwd_wall")
             metrics.log_start_time("loss_wall", priority=800, round=2)
+            """
             target_layer_results = [l[2] for l in y["layer_results"]]
 
             permuted = False
@@ -656,7 +666,9 @@ class Data2VecFBankModel(BaseFairseqModel):
         if self.ema is not None:
             result["ema_decay"] = self.ema.get_decay() * 1000
 
+        """
         metrics.log_stop_time("loss_wall")
+        """
         return result
 
     @staticmethod

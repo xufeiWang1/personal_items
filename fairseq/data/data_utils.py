@@ -368,10 +368,12 @@ def batch_by_size(
 def post_process(sentence: str, symbol: str):
     if symbol == "sentencepiece":
         sentence = sentence.replace(" ", "").replace("\u2581", " ").replace("_", " ").strip()
-    elif symbol == "wordpiece":
+    elif symbol == "wordpiece" or symbol == "eng_spm":
         sentence = sentence.replace(" ", "").replace("_", " ").strip()
-    elif symbol == "letter":
+    elif symbol == "letter" or symbol == "eng_char":
         sentence = sentence.replace(" ", "").replace("|", " ").strip()
+    elif symbol == "chn_char":
+        sentence = sentence.replace(" ", "").strip()
     elif symbol == "silence":
         import re
 
