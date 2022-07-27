@@ -16,8 +16,8 @@ dataset:
   num_workers: 4
   max_tokens: 10000
   skip_invalid_size_inputs_valid_test: true
-  train_subset: train_debug
-  valid_subset: valid_debug
+  train_subset: train
+  valid_subset: valid
   validate_interval: 1
   validate_interval_updates: 0
   max_tokens_valid: 10000
@@ -62,7 +62,7 @@ checkpoint:
 
 task:
   _name: emotion_recognition
-  data: /mnt/xlancefs/home/xc095/data/cmu_mosei/data4fariseq/
+  data: /mnt/xlancefs/home/xc095/data/cmu_mosei/data4fariseq-v2/
   config_yaml: config.yaml
 
 hydra:
