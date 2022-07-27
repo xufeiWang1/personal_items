@@ -1,0 +1,70 @@
+# @package _group_ 
+
+common:
+  log_interval: 1
+  log_format: json
+  tensorboard_logdir: tb
+  # wandb_project: fairseq-gigaspeech-ctc
+  seed: 1
+  fp16: false
+
+distributed_training:
+  distributed_world_size: 1
+  ddp_backend: pytorch_ddp
+
+dataset:
+  num_workers: 4
+  max_tokens: 1
+  skip_invalid_size_inputs_valid_test: true
+  train_subset: train_debug
+  valid_subset: valid_debug
+  validate_interval: 1
+  validate_interval_updates: 0
+  max_tokens_valid: 1
+
+optimization:
+  max_update: 150000
+  clip_norm: 5.0
+  sentence_avg: false
+  update_freq: [1]
+  lr: [0.0005]
+
+optimizer:
+  _name: adam
+  adam_betas: (0.9,0.999)
+  adam_eps: 1.0e-08
+  # weight_decay: 0.01
+
+lr_scheduler:
+  _name: linear_decay
+  # _name: inverse_sqrt
+  warmup_updates: 15000
+
+model:
+  _name: er_transformer
+  encoder_type: conformer
+  # encoder_type: transformer
+  encoder_embed_dim: 512
+  encoder_ffn_embed_dim: 2048
+  encoder_attention_heads: 8
+  encoder_layers: 2
+  outproj_dim: 512
+
+criterion:
+  _name: cross_entropy
+  sentence_avg: true
+
+checkpoint:
+  save_dir: /mnt/xlancefs/home/xc095/github/fairseq-asr/outputs/asr_mosei_ctc
+  save_interval_updates: 0
+  keep_interval_updates: -1
+  no_epoch_checkpoints: false
+
+task:
+  _name: emotion_recognition
+  data: /mnt/xlancefs/home/xc095/data/cmu_mosei/data4fariseq/
+  config_yaml: config.yaml
+
+hydra:
+    run:
+        dir: ${checkpoint.save_dir}
