@@ -340,7 +340,7 @@ class EmotionRecognitionDataset(FairseqDataset):
         if len(samples) == 0:
             return {}
         indices = torch.tensor([x.index for x in samples], dtype=torch.long)
-        targets = torch.tensor([float(x.target) for x in samples], dtype=torch.long)
+        targets = torch.tensor([[float(item) for item in x.target] for x in samples], dtype=torch.float32)
 
         # frames = _collate_frames([x.source for x in samples], self.cfg.use_audio_input)
         audio_frames = _collate_frames([x.audio_data for x in samples])
@@ -458,7 +458,8 @@ class EmotionRecognitionDatasetCreator(object):
     KEY_ID, KEY_AUDIO, KEY_VIDEO, KEY_N_FRAMES = "id", "audio", "video", "n_frames"
     KEY_TGT_TEXT = "tgt_text"
     # TODO: change to sentiments and emotions
-    KEY_TARGET  = "sentiment"
+    # KEY_TARGET  = "sentiment"
+    KEY_TARGETS = ["sentiment", "anger", "disgust", "fear", "happiness", "sadness", "surprise"]
     # optional columns
     KEY_SPEAKER, KEY_SRC_TEXT = "speaker", "src_text"
     KEY_SRC_LANG, KEY_TGT_LANG = "src_lang", "tgt_lang"
@@ -486,7 +487,8 @@ class EmotionRecognitionDatasetCreator(object):
         n_frames = [int(s[cls.KEY_N_FRAMES]) for s in samples]
         texts = [s[cls.KEY_TGT_TEXT] for s in samples]
         speakers = [s.get(cls.KEY_SPEAKER, cls.DEFAULT_SPEAKER) for s in samples]
-        targets = [s[cls.KEY_TARGET] for s in samples]
+        # targets = [s[cls.KEY_TARGET] for s in samples]
+        targets = [ [float(s[elem]) for elem in cls.KEY_TARGETS] for s in samples]
         # src_langs = [s.get(cls.KEY_SRC_LANG, cls.DEFAULT_LANG) for s in samples]
         # tgt_langs = [s.get(cls.KEY_TGT_LANG, cls.DEFAULT_LANG) for s in samples]
         return EmotionRecognitionDataset(

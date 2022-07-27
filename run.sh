@@ -12,3 +12,5 @@ python setup.py build_ext --inplace
 # Train models
 python fairseq_cli/hydra_train.py --config-dir examples/speech_recognition_sjtu/mosei/ --config-name config-ctc
 python fairseq_cli/hydra_train.py --config-dir examples/emotion_recognition/mosei/ --config-name config-transformer
+
+git push -u origin emotion_recognition
